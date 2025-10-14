@@ -7,27 +7,29 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import styles from '../components/ResumeApp/ResumeApp.styles';
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
 // --- 인터페이스 정의 ---
 interface ResumeData {
   name: string;
   address: string;
   gender: string;
   birthYear: string;
-  mobile: string;
-  email: string;
   phone: string;
+  email: string;
+  homePhone: string;
   schoolName: string;
-  attendancePeriod: string;
-  attendanceStatus: string;
+  period: string;
+  status: string;
   gpa: string;
   major: string;
   desiredJob: string;
-  hasExperience: string;
-  jobDescription: string;
-  desiredLocation: string;
+  experienceLevel: string;
+  description: string;
+  desiredRegion: string;
   desiredSalary: string;
   employmentType: string;
-  workingHours: string;
+  desiredHours: string;
 }
 interface ValidationErrors { [key: string]: string; }
 interface Step { id: string; label: string; icon: string; requiredFields: string[]; }
@@ -43,61 +45,112 @@ export default function ResumeScreen(): React.JSX.Element {
   const scrollViewRef = useRef<ScrollView>(null);
   
   const [resumeData, setResumeData] = useState<ResumeData>({
-    name: '', address: '', gender: '', birthYear: '', mobile: '', email: '', phone: '',
-    schoolName: '', attendancePeriod: '', attendanceStatus: '', gpa: '', major: '',
-    desiredJob: '', hasExperience: '', jobDescription: '', desiredLocation: '',
-    desiredSalary: '', employmentType: '', workingHours: '',
+    name: '', address: '', gender: '', birthYear: '', phone: '', email: '', homePhone: '',
+    schoolName: '', period: '', status: '', gpa: '', major: '',
+    desiredJob: '', experienceLevel: '', description: '', desiredRegion: '',
+    desiredSalary: '', employmentType: '', desiredHours: '',
   });
 
   useEffect(() => {
-    const loadResumeData = async () => {
+    const loadResumeDraft = async () => {
       try {
-        const savedData = await AsyncStorage.getItem('resumeData');
-        if (savedData !== null) { setResumeData(JSON.parse(savedData)); }
-      } catch (error) { console.error('Failed to load resume data', error); }
+        const savedDraft = await AsyncStorage.getItem('resumeDraft');
+        if (savedDraft !== null) {
+          const loadedData = JSON.parse(savedDraft);
+          setResumeData(prevData => ({ ...prevData, ...loadedData }));
+        }
+      } catch (error) { console.error('Failed to load resume draft', error); }
     };
-    loadResumeData();
+    loadResumeDraft();
   }, []);
 
   const steps: Step[] = [
-    { id: 'personal', label: '개인정보', icon: '👤', requiredFields: ['name', 'email', 'address', 'gender', 'birthYear', 'mobile'] },
-    { id: 'education', label: '학력', icon: '🎓', requiredFields: ['schoolName', 'major', 'attendancePeriod', 'attendanceStatus'] },
-    { id: 'career', label: '희망직종', icon: '💼', requiredFields: ['desiredJob', 'hasExperience'] },
-    { id: 'conditions', label: '근무조건', icon: '📍', requiredFields: ['desiredLocation', 'desiredSalary'] }
+    { id: 'personal', label: '개인정보', icon: '👤', requiredFields: ['name', 'email', 'address', 'gender', 'birthYear', 'phone'] },
+    { id: 'education', label: '학력', icon: '🎓', requiredFields: ['schoolName', 'major', 'period', 'status'] },
+    { id: 'career', label: '희망직종', icon: '💼', requiredFields: ['desiredJob', 'experienceLevel'] },
+    { id: 'conditions', label: '근무조건', icon: '📍', requiredFields: ['desiredRegion', 'desiredSalary'] }
   ];
 
   const dataLabels: { [key in keyof ResumeData]: string } = {
-    name: '성명', email: '이메일', address: '주소', gender: '성별', birthYear: '출생년도', mobile: '휴대전화', phone: '일반전화',
-    schoolName: '학교명', major: '전공명', attendancePeriod: '재학기간', attendanceStatus: '재학상태', gpa: '학점',
-    desiredJob: '희망직종', hasExperience: '경력여부', jobDescription: '희망직무내용', desiredLocation: '희망 근무 지역',
-    desiredSalary: '희망임금', employmentType: '고용형태', workingHours: '희망근무시간',
+    name: '성명', email: '이메일', address: '주소', gender: '성별', birthYear: '출생년도', phone: '휴대전화', homePhone: '일반전화',
+    schoolName: '학교명', major: '전공명', period: '재학기간', status: '재학상태', gpa: '학점',
+    desiredJob: '희망직종', experienceLevel: '경력수준', description: '희망직무내용', desiredRegion: '희망 근무 지역',
+    desiredSalary: '희망임금', employmentType: '고용형태', desiredHours: '희망근무시간',
   };
 
   const handlePreview = (): void => { setShowPreviewModal(true); };
 
   const handleFinalSave = async (): Promise<void> => {
     try {
-      const jsonValue = JSON.stringify(resumeData);
-      await AsyncStorage.setItem('resumeData', jsonValue);
+      // 백엔드 DTO 구조에 맞게 중첩된 요청 객체 생성
+      const requestBody = {
+        name: resumeData.name,
+        address: resumeData.address,
+        gender: resumeData.gender,
+        birthYear: resumeData.birthYear,
+        phone: resumeData.phone,
+        email: resumeData.email,
+        homePhone: resumeData.homePhone,
+        academicRecord: {
+          schoolName: resumeData.schoolName,
+          period: resumeData.period,
+          status: resumeData.status,
+          gpa: resumeData.gpa ? parseFloat(resumeData.gpa) : null,
+          major: resumeData.major,
+        },
+        jobPreference: {
+          desiredJob: resumeData.desiredJob,
+          experienceLevel: resumeData.experienceLevel,
+          description: resumeData.description,
+        },
+        desiredRegion: resumeData.desiredRegion,
+        desiredSalary: resumeData.desiredSalary ? parseInt(resumeData.desiredSalary.replace(/[^0-9]/g, ''), 10) : null,
+        workCondition: {
+          employmentType: resumeData.employmentType,
+          desiredHours: resumeData.desiredHours,
+        },
+      };
+
+      const response = await fetch(`${API_URL}/api/v1/resumes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody), // 수정된 객체로 전송
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`서버 응답 오류: ${response.status} ${errorText}`);
+      }
+
+      const savedData = await response.json();
+      console.log('서버 저장 성공:', savedData);
+
+      // 최종 저장 성공 후, 로컬 초안 데이터를 삭제하여 다음 작성 시 빈 양식으로 시작하도록 합니다.
+      await AsyncStorage.removeItem('resumeDraft');
       setShowPreviewModal(false);
       router.replace({
         pathname: '/chat',
         params: { name: resumeData.name },
       } as any);
-    } catch (error) { console.error('이력서 최종 저장 실패:', error); }
+
+    } catch (error) {
+      console.error('이력서 최종 저장 실패:', error);
+    }
   };
 
   const validateField = (field: string, value: string): string => {
     if (!value.trim() && steps[currentStep].requiredFields.includes(field)) { return '필수 입력 항목입니다'; }
     if (field === 'email' && value) { const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; if (!emailRegex.test(value)) return '올바른 이메일 형식이 아닙니다'; }
-    if (field === 'mobile' && value) { const phoneRegex = /^010\d{8}$/; if (!phoneRegex.test(value.replace(/-/g, ''))) return '올바른 휴대폰 번호 형식이 아닙니다'; }
+    if (field === 'phone' && value) { const phoneRegex = /^010\d{8}$/; if (!phoneRegex.test(value.replace(/-/g, ''))) return '올바른 휴대폰 번호 형식이 아닙니다'; }
     if (field === 'birthYear' && value) { const year = parseInt(value); const currentYear = new Date().getFullYear(); if (isNaN(year) || year < 1900 || year > currentYear) return '올바른 출생년도를 입력하세요'; }
     return '';
   };
 
   const handleInputChange = (field: keyof ResumeData, value: string): void => {
-    setResumeData(prev => ({ ...prev, [field]: value }));
+    const newData = { ...resumeData, [field]: value };
+    setResumeData(newData);
     if (touchedFields.has(field)) { const error = validateField(field, value); setValidationErrors(prev => ({ ...prev, [field]: error })); }
+    AsyncStorage.setItem('resumeDraft', JSON.stringify(newData));
   };
 
   const handleFieldBlur = (field: string): void => {
@@ -108,13 +161,13 @@ export default function ResumeScreen(): React.JSX.Element {
 
   const getProgress = (): number => {
     const totalRequiredFields = steps.reduce((acc, step) => acc + step.requiredFields.length, 0);
-    const filledRequiredFields = steps.reduce((acc, step) => acc + step.requiredFields.filter(field => resumeData[field as keyof ResumeData].trim() !== '').length, 0);
+    const filledRequiredFields = steps.reduce((acc, step) => acc + step.requiredFields.filter(field => typeof resumeData[field as keyof ResumeData] === 'string' && resumeData[field as keyof ResumeData].trim() !== '').length, 0);
     return (filledRequiredFields / totalRequiredFields) * 100;
   };
 
   const canProceedToNext = (): boolean => {
     const currentRequiredFields = steps[currentStep].requiredFields;
-    return currentRequiredFields.every(field => resumeData[field as keyof ResumeData].trim() !== '');
+    return currentRequiredFields.every(field => typeof resumeData[field as keyof ResumeData] === 'string' && resumeData[field as keyof ResumeData].trim() !== '');
   };
 
   const handleNext = (): void => {
@@ -196,10 +249,23 @@ export default function ResumeScreen(): React.JSX.Element {
 
   const renderStepContent = () => {
     switch (currentStep) {
-      case 0: return (<>{renderInput('name', '성명', '성명을 입력하세요', true)}{renderInput('email', '이메일', 'example@email.com', true, 'email-address')}{renderInput('address', '주소', '주소를 입력하세요', true)}{renderRadioGroup('gender', '성별', [{ value: 'male', label: '남성' }, { value: 'female', label: '여성' }])}{renderInput('birthYear', '출생년도', '1990', true, 'numeric')}{renderInput('mobile', '휴대전화', '010-0000-0000', true, 'phone-pad')}{renderInput('phone', '일반전화', '02-0000-0000', false, 'phone-pad')}</>);
-      case 1: return (<>{renderInput('schoolName', '학교명', '학교명을 입력하세요', true)}{renderInput('major', '전공명', '전공명을 입력하세요', true)}{renderInput('attendancePeriod', '재학기간', '2018.03 ~ 2022.02', true)}{renderPicker('attendanceStatus', '재학상태', [{ value: 'graduated', label: '졸업' }, { value: 'attending', label: '재학중' }, { value: 'onLeave', label: '휴학중' }, { value: 'dropped', label: '중퇴' }], true)}{renderInput('gpa', '학점', '3.5/4.5', false)}</>);
-      case 2: return (<>{renderInput('desiredJob', '희망직종', '예: 웹 개발자', true)}{renderInput('hasExperience', '경력여부', '예: 신입, 2년 경력', true)}{renderInput('jobDescription', '희망직무내용', '희망하는 직무 내용을 상세히 입력하세요', false, 'default', true)}</>);
-      case 3: return (<>{renderInput('desiredLocation', '희망 근무 지역', '예: 서울특별시 강남구', true)}{renderInput('desiredSalary', '희망임금', '예: 연봉 3000만원', true)}{renderPicker('employmentType', '고용형태', [{ value: 'fullTime', label: '정규직' }, { value: 'contract', label: '계약직' }, { value: 'partTime', label: '파트타임' }, { value: 'internship', label: '인턴십' }, { value: 'freelance', label: '프리랜서' }])}{renderInput('workingHours', '희망근무시간', '예: 09:00 ~ 18:00', false)}</>);
+      case 0: return (
+        <>
+          {renderInput('name', '성명', '홍길동', true)}
+          {renderInput('birthYear', '출생년도', '4자리 (예: 1995)', true, 'numeric')}
+          {renderRadioGroup('gender', '성별', [{ value: 'MALE', label: '남성' }, { value: 'FEMALE', label: '여성' }])}
+          {renderInput('address', '주소', '정확한 주소를 입력하세요', true)}
+          
+          <View style={{ height: 20 }} />
+
+          {renderInput('email', '이메일', 'example@email.com', true, 'email-address')}
+          {renderInput('phone', '휴대전화', '010-1234-5678', true, 'phone-pad')}
+          {renderInput('homePhone', '일반전화', '(선택) 02-1234-5678', false, 'phone-pad')}
+        </>
+      );
+      case 1: return (<>{renderInput('schoolName', '학교명', 'OO대학교', true)}{renderInput('major', '전공명', '컴퓨터공학과', true)}{renderInput('period', '재학기간', '입학년월 ~ 졸업년월 (예: 2018.03 ~ 2022.02)', true)}{renderPicker('status', '재학상태', [{ value: 'ATTENDING', label: '재학중' }, { value: 'GRADUATED', label: '졸업' }, { value: 'COMPLETED', label: '수료' }, { value: 'DROPOUT', label: '중퇴' }], true)}{renderInput('gpa', '학점', '(선택) 학점/만점 (예: 3.8/4.5)', false)}</>);
+      case 2: return (<>{renderInput('desiredJob', '희망직종', '예: 프론트엔드 개발자, UI/UX 디자이너', true)}{renderPicker('experienceLevel', '경력수준', [{ value: 'NEWCOMER', label: '신입' }, { value: 'JUNIOR', label: '주니어 (1~5년)' }, { value: 'SENIOR', label: '시니어 (5년 이상)' }], true)}{renderInput('description', '희망직무내용', '담당하고 싶은 역할, 사용하고 싶은 기술, 성장하고 싶은 분야 등을 자유롭게 작성해주세요. (예: React와 TypeScript를 사용한 프론트엔드 개발에 기여하고 싶습니다.)', false, 'default', true)}</>);
+      case 3: return (<>{renderInput('desiredRegion', '희망 근무 지역', '예: 서울 강남구 / 재택근무', true)}{renderInput('desiredSalary', '희망임금', '예: 연봉 3,500만원', true)}{renderPicker('employmentType', '고용형태', [{ value: 'FULL_TIME', label: '정규직' }, { value: 'PART_TIME', label: '파트타임' }, { value: 'INTERN', label: '인턴십' }])}{renderInput('desiredHours', '희망근무시간', '(선택) 예: 09:00 ~ 18:00', false)}</>);
       default: return <View />;
     }
   };
@@ -272,7 +338,7 @@ export default function ResumeScreen(): React.JSX.Element {
               </ScrollView>
               <View style={styles.modalBottomButtons}>
                 <TouchableOpacity style={[styles.modalButton, styles.editButton]} onPress={() => setShowPreviewModal(false)}><Text style={styles.editButtonText}>수정하기</Text></TouchableOpacity>
-                <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleFinalSave}><Text style={styles.saveButtonText}>최종 저장</Text></TouchableOpacity>
+                                <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleFinalSave}><Text style={styles.saveButtonText}>최종 저장</Text></TouchableOpacity>
               </View>
             </View>
           </View>
