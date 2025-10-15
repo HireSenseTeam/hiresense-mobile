@@ -68,7 +68,7 @@ export default function ResumeScreen(): React.JSX.Element {
     { id: 'personal', label: '개인정보', icon: '👤', requiredFields: ['name', 'email', 'address', 'gender', 'birthYear', 'phone'] },
     { id: 'education', label: '학력', icon: '🎓', requiredFields: ['schoolName', 'major', 'period', 'status'] },
     { id: 'career', label: '희망직종', icon: '💼', requiredFields: ['desiredJob', 'experienceLevel'] },
-    { id: 'conditions', label: '근무조건', icon: '📍', requiredFields: ['desiredRegion', 'desiredSalary'] }
+    { id: 'conditions', label: '근무조건', icon: '📍', requiredFields: ['desiredRegion', 'desiredSalary', 'employmentType'] }
   ];
 
   const dataLabels: { [key in keyof ResumeData]: string } = {
@@ -265,7 +265,7 @@ export default function ResumeScreen(): React.JSX.Element {
       );
       case 1: return (<>{renderInput('schoolName', '학교명', 'OO대학교', true)}{renderInput('major', '전공명', '컴퓨터공학과', true)}{renderInput('period', '재학기간', '입학년월 ~ 졸업년월 (예: 2018.03 ~ 2022.02)', true)}{renderPicker('status', '재학상태', [{ value: 'ATTENDING', label: '재학중' }, { value: 'GRADUATED', label: '졸업' }, { value: 'COMPLETED', label: '수료' }, { value: 'DROPOUT', label: '중퇴' }], true)}{renderInput('gpa', '학점', '(선택) 학점/만점 (예: 3.8/4.5)', false)}</>);
       case 2: return (<>{renderInput('desiredJob', '희망직종', '예: 프론트엔드 개발자, UI/UX 디자이너', true)}{renderPicker('experienceLevel', '경력수준', [{ value: 'NEWCOMER', label: '신입' }, { value: 'JUNIOR', label: '주니어 (1~5년)' }, { value: 'SENIOR', label: '시니어 (5년 이상)' }], true)}{renderInput('description', '희망직무내용', '담당하고 싶은 역할, 사용하고 싶은 기술, 성장하고 싶은 분야 등을 자유롭게 작성해주세요. (예: React와 TypeScript를 사용한 프론트엔드 개발에 기여하고 싶습니다.)', false, 'default', true)}</>);
-      case 3: return (<>{renderInput('desiredRegion', '희망 근무 지역', '예: 서울 강남구 / 재택근무', true)}{renderInput('desiredSalary', '희망임금', '예: 연봉 3,500만원', true)}{renderPicker('employmentType', '고용형태', [{ value: 'FULL_TIME', label: '정규직' }, { value: 'PART_TIME', label: '파트타임' }, { value: 'INTERN', label: '인턴십' }])}{renderInput('desiredHours', '희망근무시간', '(선택) 예: 09:00 ~ 18:00', false)}</>);
+      case 3: return (<>{renderInput('desiredRegion', '희망 근무 지역', '예: 서울 강남구 / 재택근무', true)}{renderInput('desiredSalary', '희망임금', '예: 연봉 3,500만원', true)}{renderPicker('employmentType', '고용형태', [{ value: 'FULL_TIME', label: '정규직' }, { value: 'PART_TIME', label: '파트타임' }, { value: 'INTERN', label: '인턴십' }], true)}{renderInput('desiredHours', '희망근무시간', '(선택) 예: 09:00 ~ 18:00', false)}</>);
       default: return <View />;
     }
   };
