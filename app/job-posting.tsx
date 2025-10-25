@@ -1,6 +1,6 @@
 // app/job-posting.tsx
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     KeyboardAvoidingView, Platform,
     SafeAreaView,
@@ -9,8 +9,10 @@ import {
     TextInput, TouchableOpacity,
     View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles from '../components/ResumeApp/ResumeApp.styles';
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 // 채용공고 데이터 인터페이스
 interface JobPostingData {
     companyName: string;
@@ -52,6 +54,21 @@ export default function JobPostingScreen(): React.JSX.Element {
         jobDescription: '',
     });
 
+    useEffect(() => {
+        const loadJobPostingDraft = async () => {
+            try {
+                const savedDraft = await AsyncStorage.getItem('jobPostingDraft');
+                if (savedDraft !== null) {
+                    const loadedData = JSON.parse(savedDraft);
+                    setJobPostingData(prevData => ({ ...prevData, ...loadedData }));
+                }
+            } catch (error) {
+                console.error('Failed to load job posting draft', error);
+            }
+        };
+        loadJobPostingDraft();
+    }, []);
+
     // 단계별 설정
     const steps: Step[] = [
         {
@@ -84,11 +101,13 @@ export default function JobPostingScreen(): React.JSX.Element {
 
     // 입력값 변경 핸들러
     const handleInputChange = (field: keyof JobPostingData, value: string): void => {
-        setJobPostingData(prev => ({ ...prev, [field]: value }));
+        const newData = { ...jobPostingData, [field]: value };
+        setJobPostingData(newData);
         if (touchedFields.has(field)) {
             const error = validateField(field, value);
             setValidationErrors(prev => ({ ...prev, [field]: error }));
         }
+        AsyncStorage.setItem('jobPostingDraft', JSON.stringify(newData));
     };
 
     // 포커스 아웃 핸들러
@@ -145,7 +164,7 @@ export default function JobPostingScreen(): React.JSX.Element {
     };
 
     // 저장 핸들러
-    const handleSave = (): void => {
+    const handleSave = async (): Promise<void> => {
         const currentRequiredFields = steps[currentStep].requiredFields;
         const errors: ValidationErrors = {};
 
@@ -158,9 +177,26 @@ export default function JobPostingScreen(): React.JSX.Element {
         setTouchedFields(new Set(currentRequiredFields));
 
         if (Object.keys(errors).length === 0) {
-            console.log('채용공고 저장:', jobPostingData);
-            // 여기에 저장 로직 추가 (AsyncStorage, API 호출 등)
-            router.back();
+            try {
+                const response = await fetch(`${API_URL}/api/v1/job-postings`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(jobPostingData),
+                });
+
+                if (!response.ok) {
+                    throw new Error('채용공고 저장에 실패했습니다.');
+                }
+
+                console.log('채용공고 저장 성공:', await response.json());
+                await AsyncStorage.removeItem('jobPostingDraft');
+                router.back();
+            } catch (error) {
+                console.error('채용공고 저장 오류:', error);
+                // 사용자에게 오류를 알리는 UI 로직을 추가할 수 있습니다.
+            }
         }
     };
 
