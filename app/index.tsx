@@ -1,32 +1,11 @@
-import { useRouter } from 'expo-router';
+import { Redirect } from 'expo-router';
 import React from 'react';
 import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function MainScreen() {
-    const router = useRouter();
-
-    return (
-        <SafeAreaView style={styles.container}>
-            <View style={styles.content}>
-                <Text style={styles.title}>🎉 환영합니다!</Text>
-                <Text style={styles.subtitle}>원하는 메뉴를 선택해주세요.</Text>
-
-                <TouchableOpacity
-                    style={styles.button}
-                    onPress={() => router.push({ pathname: '/resume' } as any)}
-                >
-                    <Text style={styles.buttonText}>📝 이력서 작성하기</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, styles.secondaryButton]}
-                    onPress={() => router.push({ pathname: '/job-posting' } as any)}
-                >
-                    <Text style={styles.buttonText}>💼 채용공고 작성하기</Text>
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
-    );
+    // TODO: 추후 실제 인증 상태에 따라 분기하도록 수정
+    // 현재는 앱 첫 진입 시 무조건 로그인 화면으로 리다이렉트
+    return <Redirect href="/login" />;
 }
 
 const styles = StyleSheet.create({
