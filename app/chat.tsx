@@ -9,45 +9,174 @@ import {
     View
 } from 'react-native';
 
-// --- 1. 설정 (★★★ 사용자 수정 필요 ★★★) ---
-const API_BASE_URL = "http://54.234.31.195:8000";
+// --- 1. 설정 ---
+// 환경 변수에서 API URL 가져오기 (없을 경우 기본값 사용)
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000";
+
+// API URL 유효성 검사
+if (!process.env.EXPO_PUBLIC_API_URL) {
+  console.warn('⚠️ EXPO_PUBLIC_API_URL이 설정되지 않았습니다. .env 파일을 확인해주세요.');
+}
 
 // ---
 
-// ★ (새로 추가) 채점 결과를 표시할 컴포넌트
+// ★ 면접관 개별 평가 카드 컴포넌트
+const EvaluatorCard = ({ evaluator, index }: { evaluator: any; index: number }) => {
+    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444']; // 면접관별 색상
+    const color = colors[index % colors.length];
+    
+    return (
+        <View style={[styles.evaluatorCard, { borderLeftColor: color, borderLeftWidth: 4 }]}>
+            <View style={styles.evaluatorHeader}>
+                <View style={[styles.evaluatorAvatar, { backgroundColor: color + '20' }]}>
+                    <Text style={[styles.evaluatorAvatarText, { color }]}>
+                        면접관 {index + 1}
+                    </Text>
+                </View>
+                <View style={styles.evaluatorInfo}>
+                    <Text style={styles.evaluatorName}>
+                        {evaluator.name || `면접관 ${index + 1}`}
+                    </Text>
+                    {evaluator.criteria && (
+                        <Text style={styles.evaluatorCriteria}>
+                            채점 기준: {evaluator.criteria}
+                        </Text>
+                    )}
+                </View>
+            </View>
+
+            <View style={styles.evaluatorScoreSection}>
+                <View style={styles.evaluatorScoreRow}>
+                    <Text style={styles.evaluatorScoreLabel}>종합 점수:</Text>
+                    <Text style={[styles.evaluatorScoreValue, { color }]}>
+                        {evaluator.overall_score ?? evaluator.score ?? 'N/A'} / 100
+                    </Text>
+                </View>
+
+                {evaluator.suitability_score && (
+                    <>
+                        {evaluator.suitability_score.ideal_candidate_fit !== undefined && (
+                            <View style={styles.evaluatorScoreRow}>
+                                <Text style={styles.evaluatorScoreLabel}>인재상 적합도:</Text>
+                                <Text style={styles.evaluatorScoreValue}>
+                                    {evaluator.suitability_score.ideal_candidate_fit} / 5
+                                </Text>
+                            </View>
+                        )}
+                        {evaluator.suitability_score.job_description_fit !== undefined && (
+                            <View style={styles.evaluatorScoreRow}>
+                                <Text style={styles.evaluatorScoreLabel}>직무 적합도:</Text>
+                                <Text style={styles.evaluatorScoreValue}>
+                                    {evaluator.suitability_score.job_description_fit} / 5
+                                </Text>
+                            </View>
+                        )}
+                    </>
+                )}
+
+                {/* 각 면접관별 커스텀 채점 항목 표시 */}
+                {evaluator.custom_scores && Object.entries(evaluator.custom_scores).map(([key, value]) => (
+                    <View key={key} style={styles.evaluatorScoreRow}>
+                        <Text style={styles.evaluatorScoreLabel}>{key}:</Text>
+                        <Text style={styles.evaluatorScoreValue}>{String(value)}</Text>
+                    </View>
+                ))}
+            </View>
+
+            {evaluator.comment && (
+                <View style={styles.evaluatorCommentSection}>
+                    <Text style={styles.evaluatorCommentLabel}>평가 코멘트:</Text>
+                    <Text style={styles.evaluatorCommentText}>{evaluator.comment}</Text>
+                </View>
+            )}
+
+            {evaluator.strengths && (
+                <View style={styles.evaluatorCommentSection}>
+                    <Text style={styles.evaluatorCommentLabel}>주요 강점:</Text>
+                    <Text style={styles.evaluatorCommentText}>{evaluator.strengths}</Text>
+                </View>
+            )}
+
+            {evaluator.weaknesses && (
+                <View style={styles.evaluatorCommentSection}>
+                    <Text style={styles.evaluatorCommentLabel}>보완할 점:</Text>
+                    <Text style={styles.evaluatorCommentText}>{evaluator.weaknesses}</Text>
+                </View>
+            )}
+        </View>
+    );
+};
+
+// ★ (수정) 채점 결과를 표시할 컴포넌트 - 4명의 면접관 지원
 const ScoreDisplay = ({ scoreReport }) => {
+    // 백엔드 응답 구조에 따라 면접관 데이터 추출
+    let evaluators: any[] = [];
+    
+    if (Array.isArray(scoreReport)) {
+        // scoreReport가 배열인 경우
+        evaluators = scoreReport;
+    } else if (scoreReport && Array.isArray(scoreReport.evaluators)) {
+        // scoreReport.evaluators가 배열인 경우
+        evaluators = scoreReport.evaluators;
+    } else if (scoreReport && (scoreReport.evaluator_1 || scoreReport.evaluator_2 || scoreReport.evaluator_3 || scoreReport.evaluator_4)) {
+        // 개별 필드로 제공되는 경우
+        evaluators = [
+            scoreReport.evaluator_1,
+            scoreReport.evaluator_2,
+            scoreReport.evaluator_3,
+            scoreReport.evaluator_4
+        ].filter(Boolean);
+    } else if (scoreReport) {
+        // 기존 단일 구조인 경우, 4개의 복사본으로 변환 (하위 호환성)
+        evaluators = Array(4).fill(null).map((_, index) => ({
+            ...scoreReport,
+            name: `면접관 ${index + 1}`,
+            criteria: scoreReport.criteria || '종합 평가'
+        }));
+    }
+
+    // 항상 4명의 면접관이 표시되도록 보장
+    while (evaluators.length < 4) {
+        evaluators.push({
+            name: `면접관 ${evaluators.length + 1}`,
+            criteria: null,
+            overall_score: null,
+            score: null
+        });
+    }
+    
+    // 최대 4명까지만 표시
+    evaluators = evaluators.slice(0, 4);
+
+    // 종합 점수 계산 (평균 또는 전체 점수)
+    const overallScore = (scoreReport && scoreReport.overall_score) || 
+        (evaluators.length > 0 
+            ? Math.round(evaluators.reduce((sum: number, e: any) => sum + ((e && (e.overall_score || e.score)) || 0), 0) / evaluators.length)
+            : 0);
+
     return (
         <View style={styles.scoreContainer}>
             <Text style={styles.scoreTitle}>면접 채점 결과</Text>
-
-            <View style={styles.scoreItem}>
-                <Text style={styles.scoreLabel}>종합 점수:</Text>
-                <Text style={[styles.scoreValue, styles.overallScore]}>{scoreReport.overall_score} / 100</Text>
+            
+            {/* 종합 점수 요약 */}
+            <View style={styles.overallSummary}>
+                <Text style={styles.overallSummaryLabel}>종합 점수</Text>
+                <Text style={styles.overallSummaryScore}>{overallScore} / 100</Text>
+                {scoreReport && scoreReport.overall_comment && (
+                    <Text style={styles.overallSummaryComment}>{scoreReport.overall_comment}</Text>
+                )}
             </View>
 
-            <View style={styles.scoreItem}>
-                <Text style={styles.scoreLabel}>종합 코멘트:</Text>
-                <Text style={styles.scoreComment}>{scoreReport.overall_comment}</Text>
-            </View>
-
-            <View style={styles.scoreItem}>
-                <Text style={styles.scoreLabel}>인재상 적합도:</Text>
-                <Text style={styles.scoreValue}>{scoreReport.suitability_score?.ideal_candidate_fit} / 5</Text>
-            </View>
-
-            <View style={styles.scoreItem}>
-                <Text style={styles.scoreLabel}>직무 적합도:</Text>
-                <Text style={styles.scoreValue}>{scoreReport.suitability_score?.job_description_fit} / 5</Text>
-            </View>
-
-            <View style={styles.scoreItem}>
-                <Text style={styles.scoreLabel}>주요 강점:</Text>
-                <Text style={styles.scoreComment}>{scoreReport.strengths}</Text>
-            </View>
-
-            <View style={styles.scoreItem}>
-                <Text style={styles.scoreLabel}>보완할 점:</Text>
-                <Text style={styles.scoreComment}>{scoreReport.weaknesses}</Text>
+            {/* 4명의 면접관 평가 카드 */}
+            <View style={styles.evaluatorsContainer}>
+                <Text style={styles.evaluatorsTitle}>면접관별 평가</Text>
+                {evaluators.map((evaluator, index) => (
+                    <EvaluatorCard 
+                        key={index} 
+                        evaluator={evaluator || { name: `면접관 ${index + 1}` }} 
+                        index={index} 
+                    />
+                ))}
             </View>
         </View>
     );
@@ -60,7 +189,7 @@ export default function ChatScreen() {
     // --- 2. 상태(State) 관리 ---
     const [message, setMessage] = useState(''); // 입력창의 현재 메시지
     const [sessionId, setSessionId] = useState(null); // 백엔드에서 받은 면접 세션 ID
-    const [chatHistory, setChatHistory] = useState([]); // 대화 기록 (배열)
+    const [chatHistory, setChatHistory] = useState<any[]>([]); // 대화 기록 (배열)
     const [isLoading, setIsLoading] = useState(false); // AI가 응답 중인지 (로딩)
     const [interviewActive, setInterviewActive] = useState(false); // 면접이 진행 중인지
 
@@ -68,7 +197,7 @@ export default function ChatScreen() {
     const [scoreReport, setScoreReport] = useState(null); // 채점 결과 JSON
     const [isFetchingScore, setIsFetchingScore] = useState(false); // 점수 로딩 중
 
-    const scrollViewRef = useRef(null); // 스크롤뷰를 제어하기 위한 Ref
+    const scrollViewRef = useRef<ScrollView>(null); // 스크롤뷰를 제어하기 위한 Ref
 
     // --- 3. 면접 시작 (화면 로드 시 1회 실행) ---
     useEffect(() => {
@@ -346,7 +475,7 @@ const styles = StyleSheet.create({
     },
     // ... (기존 Placeholder 스타일은 생략) ...
 
-    // ★ (새로 추가) 점수 표시 스타일
+    // ★ (수정) 점수 표시 스타일 - 4명의 면접관 지원
     scoreContainer: {
         backgroundColor: '#fff',
         borderRadius: 12,
@@ -356,42 +485,133 @@ const styles = StyleSheet.create({
         marginVertical: 10,
     },
     scoreTitle: {
-        fontSize: 20,
+        fontSize: 22,
         fontWeight: 'bold',
         color: '#3b82f6',
         textAlign: 'center',
         marginBottom: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomWidth: 2,
+        borderBottomColor: '#e0e0e0',
         paddingBottom: 10,
     },
-    scoreItem: {
+    overallSummary: {
+        backgroundColor: '#f8f9fa',
+        borderRadius: 10,
+        padding: 15,
+        marginBottom: 20,
+        alignItems: 'center',
+    },
+    overallSummaryLabel: {
+        fontSize: 14,
+        color: '#666',
+        marginBottom: 5,
+    },
+    overallSummaryScore: {
+        fontSize: 32,
+        fontWeight: 'bold',
+        color: '#d32f2f',
+        marginBottom: 8,
+    },
+    overallSummaryComment: {
+        fontSize: 14,
+        color: '#555',
+        textAlign: 'center',
+        lineHeight: 20,
+    },
+    evaluatorsContainer: {
+        marginTop: 10,
+    },
+    evaluatorsTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 15,
+    },
+    evaluatorCard: {
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#e0e0e0',
+        padding: 15,
+        marginBottom: 15,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    evaluatorHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 15,
+        paddingBottom: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f0f0f0',
+    },
+    evaluatorAvatar: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    evaluatorAvatarText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+    },
+    evaluatorInfo: {
+        flex: 1,
+    },
+    evaluatorName: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+        marginBottom: 4,
+    },
+    evaluatorCriteria: {
+        fontSize: 13,
+        color: '#666',
+        fontStyle: 'italic',
+    },
+    evaluatorScoreSection: {
+        marginBottom: 12,
+    },
+    evaluatorScoreRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 10,
-        alignItems: 'flex-start',
+        alignItems: 'center',
+        marginBottom: 8,
+        paddingVertical: 4,
     },
-    scoreLabel: {
-        fontSize: 15,
+    evaluatorScoreLabel: {
+        fontSize: 14,
         fontWeight: '600',
         color: '#555',
         flex: 1,
     },
-    scoreValue: {
-        fontSize: 16,
+    evaluatorScoreValue: {
+        fontSize: 15,
         fontWeight: 'bold',
         color: '#333',
         flex: 1,
         textAlign: 'right',
     },
-    overallScore: {
-        color: '#d32f2f', // 강조색
-        fontSize: 18,
+    evaluatorCommentSection: {
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#f0f0f0',
     },
-    scoreComment: {
-        fontSize: 15,
+    evaluatorCommentLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#666',
+        marginBottom: 6,
+    },
+    evaluatorCommentText: {
+        fontSize: 14,
         color: '#333',
-        flex: 2,
-        textAlign: 'right',
-    }
+        lineHeight: 20,
+    },
 });
