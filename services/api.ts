@@ -366,6 +366,24 @@ export const interviewApi = {
     if (!response.ok) throw new Error('면접 목록 조회 실패');
     return response.json();
   },
+
+  // 면접 세션 삭제
+  deleteSession: async (sessionId: string): Promise<void> => {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/interview/session/${sessionId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = '면접 세션 삭제 실패';
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  },
 };
 
 // 랭킹 API

@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     RefreshControl,
     SafeAreaView,
     ScrollView,
@@ -83,6 +84,34 @@ export default function InterviewsScreen() {
         }
     };
 
+    const handleDelete = async (sessionId: string, event: any) => {
+        event.stopPropagation(); // 카드 클릭 이벤트 방지
+        
+        Alert.alert(
+            '면접 삭제',
+            '이 면접을 삭제하시겠습니까? 삭제된 면접은 복구할 수 없습니다.',
+            [
+                {
+                    text: '취소',
+                    style: 'cancel',
+                },
+                {
+                    text: '삭제',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await interviewApi.deleteSession(sessionId);
+                            // 목록 새로고침
+                            loadSessions();
+                        } catch (error: any) {
+                            Alert.alert('삭제 실패', error.message || '면접 삭제 중 오류가 발생했습니다.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
@@ -126,38 +155,45 @@ export default function InterviewsScreen() {
                         }
                         
                         return (
-                            <TouchableOpacity
-                                key={sessionId}
-                                style={styles.sessionCard}
-                                onPress={() => {
-                                    router.push({
-                                        pathname: '/interview-detail',
-                                        params: { sessionId: sessionId },
-                                    } as any);
-                                }}
-                            >
-                                <View style={styles.sessionHeader}>
-                                    <Text style={styles.sessionTitle}>
-                                        {jobPosting?.jobTitle || session.jobPosting?.jobTitle || `채용공고 #${session.jobPostingId}`}
-                                    </Text>
-                                    <View
-                                        style={[
-                                            styles.statusBadge,
-                                            { backgroundColor: getStatusColor(session.status) },
-                                        ]}
-                                    >
-                                        <Text style={styles.statusText}>
-                                            {getStatusText(session.status)}
+                            <View key={sessionId} style={styles.sessionCardContainer}>
+                                <TouchableOpacity
+                                    style={styles.sessionCard}
+                                    onPress={() => {
+                                        router.push({
+                                            pathname: '/interview-detail',
+                                            params: { sessionId: sessionId },
+                                        } as any);
+                                    }}
+                                >
+                                    <View style={styles.sessionHeader}>
+                                        <Text style={styles.sessionTitle}>
+                                            {jobPosting?.jobTitle || session.jobPosting?.jobTitle || `채용공고 #${session.jobPostingId}`}
                                         </Text>
+                                        <View
+                                            style={[
+                                                styles.statusBadge,
+                                                { backgroundColor: getStatusColor(session.status) },
+                                            ]}
+                                        >
+                                            <Text style={styles.statusText}>
+                                                {getStatusText(session.status)}
+                                            </Text>
+                                        </View>
                                     </View>
-                                </View>
-                                <Text style={styles.sessionCompany}>
-                                    {jobPosting?.companyName || session.jobPosting?.companyName || '회사명'}
-                                </Text>
-                                <Text style={styles.sessionDate}>
-                                    진행률: {session.currentIndex} / {session.totalQuestions || '?'}
-                                </Text>
-                            </TouchableOpacity>
+                                    <Text style={styles.sessionCompany}>
+                                        {jobPosting?.companyName || session.jobPosting?.companyName || '회사명'}
+                                    </Text>
+                                    <Text style={styles.sessionDate}>
+                                        진행률: {session.currentIndex} / {session.totalQuestions || '?'}
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.deleteButton}
+                                    onPress={(e) => handleDelete(sessionId, e)}
+                                >
+                                    <Text style={styles.deleteButtonText}>🗑️</Text>
+                                </TouchableOpacity>
+                            </View>
                         );
                     }).filter(Boolean)
                 )}
@@ -223,13 +259,27 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#999',
     },
+    sessionCardContainer: {
+        flexDirection: 'row',
+        marginBottom: 12,
+        alignItems: 'center',
+    },
     sessionCard: {
+        flex: 1,
         backgroundColor: '#fff',
         borderRadius: 12,
         padding: 16,
-        marginBottom: 12,
         borderWidth: 1,
         borderColor: '#e0e0e0',
+    },
+    deleteButton: {
+        marginLeft: 8,
+        padding: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    deleteButtonText: {
+        fontSize: 20,
     },
     sessionHeader: {
         flexDirection: 'row',
