@@ -11,8 +11,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles from '../components/ResumeApp/ResumeApp.styles';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+import { jobPostingApi } from '../services/api';
 // 채용공고 데이터 인터페이스
 interface JobPostingData {
     companyName: string;
@@ -178,24 +177,14 @@ export default function JobPostingScreen(): React.JSX.Element {
 
         if (Object.keys(errors).length === 0) {
             try {
-                const response = await fetch(`${API_URL}/api/v1/job-postings`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(jobPostingData),
-                });
-
-                if (!response.ok) {
-                    throw new Error('채용공고 저장에 실패했습니다.');
-                }
-
-                console.log('채용공고 저장 성공:', await response.json());
+                const savedJobPosting = await jobPostingApi.create(jobPostingData);
+                console.log('채용공고 저장 성공:', savedJobPosting);
                 await AsyncStorage.removeItem('jobPostingDraft');
                 router.back();
-            } catch (error) {
+            } catch (error: any) {
                 console.error('채용공고 저장 오류:', error);
                 // 사용자에게 오류를 알리는 UI 로직을 추가할 수 있습니다.
+                alert(`채용공고 저장 실패: ${error.message || '네트워크 오류가 발생했습니다.'}`);
             }
         }
     };

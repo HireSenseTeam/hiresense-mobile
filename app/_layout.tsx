@@ -6,7 +6,15 @@ export default function RootLayout() {
         <Stack>
             <Stack.Screen
                 name="index"
-                options={{ title: '메인 화면' }}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="login"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="signup"
+                options={{ headerShown: false }}
             />
             <Stack.Screen
                 name="resume"
@@ -29,6 +37,34 @@ export default function RootLayout() {
                         </Text>
                     ),
                 })}
+            />
+            <Stack.Screen
+                name="job-list"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="interviews"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="select-job"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="interview-detail"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="job-detail"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="ranking"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="my-resume"
+                options={{ headerShown: false }}
             />
         </Stack>
     );

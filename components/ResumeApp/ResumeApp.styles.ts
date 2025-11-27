@@ -165,6 +165,15 @@ export default StyleSheet.create({
     height: 120,
     textAlignVertical: 'top',
   },
+  inputDisabled: {
+    backgroundColor: '#f5f5f5',
+    color: '#666',
+  },
+  disabledHint: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
   inputError: {
     borderColor: '#dc2626',
   },
