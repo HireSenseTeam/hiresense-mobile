@@ -9,174 +9,58 @@ import {
     View
 } from 'react-native';
 
-// --- 1. 설정 ---
-// 환경 변수에서 API URL 가져오기 (없을 경우 기본값 사용)
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8000";
+import { interviewApi } from '../services/api';
 
-// API URL 유효성 검사
-if (!process.env.EXPO_PUBLIC_API_URL) {
-  console.warn('⚠️ EXPO_PUBLIC_API_URL이 설정되지 않았습니다. .env 파일을 확인해주세요.');
+// ★ (새로 추가) 채점 결과를 표시할 컴포넌트
+interface ScoreReport {
+    overallScore: number | string; // BigDecimal이 문자열로 올 수 있음
+    overallComment: string;
+    strengths: string;
+    weaknesses: string;
+    idealCandidateFit: number;
+    jobDescriptionFit: number;
 }
 
-// ---
-
-// ★ 면접관 개별 평가 카드 컴포넌트
-const EvaluatorCard = ({ evaluator, index }: { evaluator: any; index: number }) => {
-    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444']; // 면접관별 색상
-    const color = colors[index % colors.length];
-    
-    return (
-        <View style={[styles.evaluatorCard, { borderLeftColor: color, borderLeftWidth: 4 }]}>
-            <View style={styles.evaluatorHeader}>
-                <View style={[styles.evaluatorAvatar, { backgroundColor: color + '20' }]}>
-                    <Text style={[styles.evaluatorAvatarText, { color }]}>
-                        면접관 {index + 1}
-                    </Text>
-                </View>
-                <View style={styles.evaluatorInfo}>
-                    <Text style={styles.evaluatorName}>
-                        {evaluator.name || `면접관 ${index + 1}`}
-                    </Text>
-                    {evaluator.criteria && (
-                        <Text style={styles.evaluatorCriteria}>
-                            채점 기준: {evaluator.criteria}
-                        </Text>
-                    )}
-                </View>
-            </View>
-
-            <View style={styles.evaluatorScoreSection}>
-                <View style={styles.evaluatorScoreRow}>
-                    <Text style={styles.evaluatorScoreLabel}>종합 점수:</Text>
-                    <Text style={[styles.evaluatorScoreValue, { color }]}>
-                        {evaluator.overall_score ?? evaluator.score ?? 'N/A'} / 100
-                    </Text>
-                </View>
-
-                {evaluator.suitability_score && (
-                    <>
-                        {evaluator.suitability_score.ideal_candidate_fit !== undefined && (
-                            <View style={styles.evaluatorScoreRow}>
-                                <Text style={styles.evaluatorScoreLabel}>인재상 적합도:</Text>
-                                <Text style={styles.evaluatorScoreValue}>
-                                    {evaluator.suitability_score.ideal_candidate_fit} / 5
-                                </Text>
-                            </View>
-                        )}
-                        {evaluator.suitability_score.job_description_fit !== undefined && (
-                            <View style={styles.evaluatorScoreRow}>
-                                <Text style={styles.evaluatorScoreLabel}>직무 적합도:</Text>
-                                <Text style={styles.evaluatorScoreValue}>
-                                    {evaluator.suitability_score.job_description_fit} / 5
-                                </Text>
-                            </View>
-                        )}
-                    </>
-                )}
-
-                {/* 각 면접관별 커스텀 채점 항목 표시 */}
-                {evaluator.custom_scores && Object.entries(evaluator.custom_scores).map(([key, value]) => (
-                    <View key={key} style={styles.evaluatorScoreRow}>
-                        <Text style={styles.evaluatorScoreLabel}>{key}:</Text>
-                        <Text style={styles.evaluatorScoreValue}>{String(value)}</Text>
-                    </View>
-                ))}
-            </View>
-
-            {evaluator.comment && (
-                <View style={styles.evaluatorCommentSection}>
-                    <Text style={styles.evaluatorCommentLabel}>평가 코멘트:</Text>
-                    <Text style={styles.evaluatorCommentText}>{evaluator.comment}</Text>
-                </View>
-            )}
-
-            {evaluator.strengths && (
-                <View style={styles.evaluatorCommentSection}>
-                    <Text style={styles.evaluatorCommentLabel}>주요 강점:</Text>
-                    <Text style={styles.evaluatorCommentText}>{evaluator.strengths}</Text>
-                </View>
-            )}
-
-            {evaluator.weaknesses && (
-                <View style={styles.evaluatorCommentSection}>
-                    <Text style={styles.evaluatorCommentLabel}>보완할 점:</Text>
-                    <Text style={styles.evaluatorCommentText}>{evaluator.weaknesses}</Text>
-                </View>
-            )}
-        </View>
-    );
-};
-
-// ★ (수정) 채점 결과를 표시할 컴포넌트 - 4명의 면접관 지원
-const ScoreDisplay = ({ scoreReport }) => {
-    // 백엔드 응답 구조에 따라 면접관 데이터 추출
-    let evaluators: any[] = [];
-    
-    if (Array.isArray(scoreReport)) {
-        // scoreReport가 배열인 경우
-        evaluators = scoreReport;
-    } else if (scoreReport && Array.isArray(scoreReport.evaluators)) {
-        // scoreReport.evaluators가 배열인 경우
-        evaluators = scoreReport.evaluators;
-    } else if (scoreReport && (scoreReport.evaluator_1 || scoreReport.evaluator_2 || scoreReport.evaluator_3 || scoreReport.evaluator_4)) {
-        // 개별 필드로 제공되는 경우
-        evaluators = [
-            scoreReport.evaluator_1,
-            scoreReport.evaluator_2,
-            scoreReport.evaluator_3,
-            scoreReport.evaluator_4
-        ].filter(Boolean);
-    } else if (scoreReport) {
-        // 기존 단일 구조인 경우, 4개의 복사본으로 변환 (하위 호환성)
-        evaluators = Array(4).fill(null).map((_, index) => ({
-            ...scoreReport,
-            name: `면접관 ${index + 1}`,
-            criteria: scoreReport.criteria || '종합 평가'
-        }));
-    }
-
-    // 항상 4명의 면접관이 표시되도록 보장
-    while (evaluators.length < 4) {
-        evaluators.push({
-            name: `면접관 ${evaluators.length + 1}`,
-            criteria: null,
-            overall_score: null,
-            score: null
-        });
-    }
-    
-    // 최대 4명까지만 표시
-    evaluators = evaluators.slice(0, 4);
-
-    // 종합 점수 계산 (평균 또는 전체 점수)
-    const overallScore = (scoreReport && scoreReport.overall_score) || 
-        (evaluators.length > 0 
-            ? Math.round(evaluators.reduce((sum: number, e: any) => sum + ((e && (e.overall_score || e.score)) || 0), 0) / evaluators.length)
-            : 0);
+const ScoreDisplay = ({ scoreReport }: { scoreReport: ScoreReport }) => {
+    // overallScore를 숫자로 변환 (BigDecimal이 문자열로 올 수 있음)
+    const overallScore = typeof scoreReport.overallScore === 'number'
+        ? scoreReport.overallScore
+        : parseFloat(String(scoreReport.overallScore || 0));
 
     return (
         <View style={styles.scoreContainer}>
             <Text style={styles.scoreTitle}>면접 채점 결과</Text>
-            
-            {/* 종합 점수 요약 */}
-            <View style={styles.overallSummary}>
-                <Text style={styles.overallSummaryLabel}>종합 점수</Text>
-                <Text style={styles.overallSummaryScore}>{overallScore} / 100</Text>
-                {scoreReport && scoreReport.overall_comment && (
-                    <Text style={styles.overallSummaryComment}>{scoreReport.overall_comment}</Text>
-                )}
+
+            <View style={styles.scoreItem}>
+                <Text style={styles.scoreLabel}>종합 점수:</Text>
+                <Text style={[styles.scoreValue, styles.overallScore]}>
+                    {isNaN(overallScore) ? '0' : overallScore.toFixed(2)} / 100
+                </Text>
             </View>
 
-            {/* 4명의 면접관 평가 카드 */}
-            <View style={styles.evaluatorsContainer}>
-                <Text style={styles.evaluatorsTitle}>면접관별 평가</Text>
-                {evaluators.map((evaluator, index) => (
-                    <EvaluatorCard 
-                        key={index} 
-                        evaluator={evaluator || { name: `면접관 ${index + 1}` }} 
-                        index={index} 
-                    />
-                ))}
+            <View style={styles.scoreItem}>
+                <Text style={styles.scoreLabel}>종합 코멘트:</Text>
+                <Text style={styles.scoreComment}>{scoreReport.overallComment}</Text>
+            </View>
+
+            <View style={styles.scoreItem}>
+                <Text style={styles.scoreLabel}>인재상 적합도:</Text>
+                <Text style={styles.scoreValue}>{scoreReport.idealCandidateFit} / 5</Text>
+            </View>
+
+            <View style={styles.scoreItem}>
+                <Text style={styles.scoreLabel}>직무 적합도:</Text>
+                <Text style={styles.scoreValue}>{scoreReport.jobDescriptionFit} / 5</Text>
+            </View>
+
+            <View style={styles.scoreItem}>
+                <Text style={styles.scoreLabel}>주요 강점:</Text>
+                <Text style={styles.scoreComment}>{scoreReport.strengths}</Text>
+            </View>
+
+            <View style={styles.scoreItem}>
+                <Text style={styles.scoreLabel}>보완할 점:</Text>
+                <Text style={styles.scoreComment}>{scoreReport.weaknesses}</Text>
             </View>
         </View>
     );
@@ -184,45 +68,58 @@ const ScoreDisplay = ({ scoreReport }) => {
 
 
 export default function ChatScreen() {
-    const { name, jobId } = useLocalSearchParams<{ name: string, jobId: string }>(); // resume 화면에서 전달받은 이름
+    const { name, jobId, email } = useLocalSearchParams<{ name: string, jobId: string, email?: string }>(); // resume 화면에서 전달받은 이름
 
     // --- 2. 상태(State) 관리 ---
     const [message, setMessage] = useState(''); // 입력창의 현재 메시지
-    const [sessionId, setSessionId] = useState(null); // 백엔드에서 받은 면접 세션 ID
-    const [chatHistory, setChatHistory] = useState<any[]>([]); // 대화 기록 (배열)
+    const [sessionId, setSessionId] = useState<string | null>(null); // 백엔드에서 받은 면접 세션 ID
+    const [chatHistory, setChatHistory] = useState<Array<{ sender: string; text: string; key: string }>>([]); // 대화 기록 (배열)
     const [isLoading, setIsLoading] = useState(false); // AI가 응답 중인지 (로딩)
     const [interviewActive, setInterviewActive] = useState(false); // 면접이 진행 중인지
 
     // ★ (새로 추가) 점수 관련 상태
-    const [scoreReport, setScoreReport] = useState(null); // 채점 결과 JSON
+    const [scoreReport, setScoreReport] = useState<ScoreReport | null>(null); // 채점 결과 JSON
     const [isFetchingScore, setIsFetchingScore] = useState(false); // 점수 로딩 중
 
-    const scrollViewRef = useRef<ScrollView>(null); // 스크롤뷰를 제어하기 위한 Ref
+    const scrollViewRef = useRef(null); // 스크롤뷰를 제어하기 위한 Ref
 
     // --- 3. 면접 시작 (화면 로드 시 1회 실행) ---
     useEffect(() => {
         // 면접 시작 함수
         const startInterview = async () => {
-            setIsLoading(true);
-            // 백엔드에 /interview/start 요청
-            try {
-                const response = await fetch(`${API_BASE_URL}/interview/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ job_id: jobId }),
-                });
-                const data = await response.json();
+            if (!jobId) {
+                addMessageToHistory('ai', '채용공고 ID가 필요합니다.');
+                return;
+            }
 
-                if (!response.ok) {
-                    throw new Error(data.error || '서버 시작 오류');
+            setIsLoading(true);
+            try {
+                // 이메일 가져오기 (파라미터 > 로그인 이메일 > 이력서 이메일 순서)
+                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                let applicantEmail = email;
+                if (!applicantEmail) {
+                    // 로그인한 사용자 이메일 우선 사용
+                    applicantEmail = await AsyncStorage.getItem('userEmail');
+                }
+                if (!applicantEmail) {
+                    // 이력서에 저장된 이메일 사용
+                    applicantEmail = await AsyncStorage.getItem('resumeEmail');
+                }
+                if (!applicantEmail) {
+                    addMessageToHistory('ai', '이메일 정보를 찾을 수 없습니다. 이력서를 먼저 작성해주세요.');
+                    setIsLoading(false);
+                    return;
                 }
 
+                console.log('[면접 시작] 사용할 이메일:', applicantEmail);
+                const data = await interviewApi.start(parseInt(jobId), applicantEmail);
+
                 // 성공 시: 세션 ID 저장 및 첫 질문 표시
-                setSessionId(data.session_id);
+                setSessionId(data.sessionId);
                 addMessageToHistory('ai', data.question); // AI의 첫 질문 추가
                 setInterviewActive(true); // 면접 시작
 
-            } catch (error) {
+            } catch (error: any) {
                 console.error("Error starting interview:", error);
                 addMessageToHistory('ai', `면접 시작 중 오류 발생: ${error.message}`);
             }
@@ -232,11 +129,11 @@ export default function ChatScreen() {
         // 처음 환영 메시지 추가 후 면접 시작
         addMessageToHistory('ai', `안녕하세요, ${name}님. AI 면접을 시작하겠습니다.`);
         startInterview();
-    }, [name]); // name이 바뀔 때만 (즉, 처음 1회) 실행
+    }, [name, jobId]); // name과 jobId가 바뀔 때 실행
 
     // --- 4. 메시지 전송 (답변 제출) ---
     const handleSend = async () => {
-        if (message.trim().length === 0 || isLoading || !interviewActive) {
+        if (message.trim().length === 0 || isLoading || !interviewActive || !sessionId) {
             return;
         }
 
@@ -246,19 +143,7 @@ export default function ChatScreen() {
         setIsLoading(true);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/interview/answer`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    answer_text: userMessage,
-                }),
-            });
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || '답변 처리 오류');
-            }
+            const data = await interviewApi.submitAnswer(sessionId, userMessage);
 
             // 성공 시: AI의 다음 질문 또는 종료 메시지 표시
             if (data.question) {
@@ -268,13 +153,15 @@ export default function ChatScreen() {
                 // 면접이 종료된 경우
                 addMessageToHistory('ai', data.message);
                 setInterviewActive(false); // 면접 종료
-                // ★ (새로 추가) 면접 종료 시, 점수 폴링 시작
+                // 마무리 멘트 추가
+                addMessageToHistory('ai', "채점이 완료되면 내 면접 목록에서 채점 결과를 확인하실 수 있습니다.");
+                // ★ (새로 추가) 면접 종료 시, 점수 폴링 시작 (점수는 내 면접 목록에서 확인)
                 setIsFetchingScore(true); // "점수 확인 중..." 인디케이터 표시
                 addMessageToHistory('ai', "채점을 시작합니다. 약 30초 정도 소요됩니다...");
-                pollForScore(sessionId); // ★ 점수 가져오기 함수 호출
+                pollForScore(sessionId); // ★ 점수 가져오기 함수 호출 (점수는 표시하지 않음)
             }
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error sending answer:", error);
             addMessageToHistory('ai', `오류 발생: ${error.message}`);
         }
@@ -287,39 +174,31 @@ export default function ChatScreen() {
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     // 점수 결과를 주기적으로 확인하는 함수
-    const pollForScore = async (currentSessionId) => {
+    const pollForScore = async (currentSessionId: string) => {
         const MAX_ATTEMPTS = 6; // 최대 6번 시도 (총 30초)
         const POLL_INTERVAL = 5000; // 5초 간격
 
         for (let i = 0; i < MAX_ATTEMPTS; i++) {
             try {
-                // 1단계에서 만든 /interview/score API 호출 (GET 요청)
-                const response = await fetch(`${API_BASE_URL}/interview/score?session_id=${currentSessionId}`);
+                const scoreData = await interviewApi.getScore(currentSessionId);
+                // chat 화면에서는 점수를 표시하지 않음 (내 면접 목록에서 확인)
+                // setScoreReport(scoreData);
+                addMessageToHistory('ai', "채점이 완료되었습니다! 내 면접 목록에서 결과를 확인하세요.");
+                setIsFetchingScore(false);
+                return; // 폴링 종료
 
-                if (response.ok) {
-                    // 성공 (200 OK) - 점수(JSON)를 받음
-                    const scoreData = await response.json();
-                    setScoreReport(scoreData);
-                    addMessageToHistory('ai', "채점이 완료되었습니다! 결과를 확인하세요.");
-                    setIsFetchingScore(false);
-                    return; // 폴링 종료
-                }
-
-                if (response.status === 404) {
-                    // (404 Not Found) - 아직 채점 중
+            } catch (error: any) {
+                if (error.message === 'NOT_FOUND' || error.message === 'SCORING_IN_PROGRESS') {
+                    // 아직 채점 중
                     console.log("채점 진행 중... (Attempt", i + 1, ")");
-                    // 5초 대기
                     await sleep(POLL_INTERVAL);
                 } else {
-                    // 그 외 서버 오류
-                    throw new Error(`서버 오류: ${response.status}`);
+                    // 그 외 오류
+                    console.error("Error polling score:", error);
+                    addMessageToHistory('ai', `채점 결과 로딩 중 오류 발생: ${error.message}`);
+                    setIsFetchingScore(false);
+                    return; // 오류 발생 시 폴링 종료
                 }
-
-            } catch (error) {
-                console.error("Error polling score:", error);
-                addMessageToHistory('ai', `채점 결과 로딩 중 오류 발생: ${error.message}`);
-                setIsFetchingScore(false);
-                return; // 오류 발생 시 폴링 종료
             }
         }
 
@@ -332,7 +211,7 @@ export default function ChatScreen() {
     // --- 6. 유틸리티 함수 ---
 
     // 채팅 기록에 메시지 추가하는 함수
-    const addMessageToHistory = (sender, text) => {
+    const addMessageToHistory = (sender: string, text: string) => {
         setChatHistory(prevHistory => [...prevHistory, { sender, text, key: Math.random().toString() }]);
     };
 
@@ -373,10 +252,7 @@ export default function ChatScreen() {
                         </View>
                     )}
 
-                    {/* ★ (새로 추가) 점수 리포트 표시 */}
-                    {scoreReport && (
-                        <ScoreDisplay scoreReport={scoreReport} />
-                    )}
+                    {/* chat 화면에서는 점수 표시하지 않음 (내 면접 목록에서 확인) */}
 
                 </ScrollView>
 
@@ -475,7 +351,7 @@ const styles = StyleSheet.create({
     },
     // ... (기존 Placeholder 스타일은 생략) ...
 
-    // ★ (수정) 점수 표시 스타일 - 4명의 면접관 지원
+    // ★ (새로 추가) 점수 표시 스타일
     scoreContainer: {
         backgroundColor: '#fff',
         borderRadius: 12,
@@ -485,133 +361,52 @@ const styles = StyleSheet.create({
         marginVertical: 10,
     },
     scoreTitle: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: 'bold',
         color: '#3b82f6',
         textAlign: 'center',
         marginBottom: 15,
-        borderBottomWidth: 2,
-        borderBottomColor: '#e0e0e0',
+        borderBottomWidth: 1,
+        borderBottomColor: '#eee',
         paddingBottom: 10,
     },
-    overallSummary: {
-        backgroundColor: '#f8f9fa',
-        borderRadius: 10,
-        padding: 15,
-        marginBottom: 20,
-        alignItems: 'center',
-    },
-    overallSummaryLabel: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 5,
-    },
-    overallSummaryScore: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: '#d32f2f',
-        marginBottom: 8,
-    },
-    overallSummaryComment: {
-        fontSize: 14,
-        color: '#555',
-        textAlign: 'center',
-        lineHeight: 20,
-    },
-    evaluatorsContainer: {
-        marginTop: 10,
-    },
-    evaluatorsTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 15,
-    },
-    evaluatorCard: {
-        backgroundColor: '#fff',
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#e0e0e0',
-        padding: 15,
-        marginBottom: 15,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
-    },
-    evaluatorHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 15,
-        paddingBottom: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
-    },
-    evaluatorAvatar: {
-        width: 50,
-        height: 50,
-        borderRadius: 25,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    evaluatorAvatarText: {
-        fontSize: 14,
-        fontWeight: 'bold',
-    },
-    evaluatorInfo: {
-        flex: 1,
-    },
-    evaluatorName: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: 4,
-    },
-    evaluatorCriteria: {
-        fontSize: 13,
-        color: '#666',
-        fontStyle: 'italic',
-    },
-    evaluatorScoreSection: {
-        marginBottom: 12,
-    },
-    evaluatorScoreRow: {
+    scoreItem: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 8,
-        paddingVertical: 4,
+        marginBottom: 10,
+        alignItems: 'flex-start',
     },
-    evaluatorScoreLabel: {
-        fontSize: 14,
+    scoreLabel: {
+        fontSize: 15,
         fontWeight: '600',
         color: '#555',
         flex: 1,
     },
-    evaluatorScoreValue: {
-        fontSize: 15,
+    scoreValue: {
+        fontSize: 16,
         fontWeight: 'bold',
         color: '#333',
         flex: 1,
         textAlign: 'right',
     },
-    evaluatorCommentSection: {
-        marginTop: 10,
-        paddingTop: 10,
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
+    overallScore: {
+        color: '#d32f2f', // 강조색
+        fontSize: 18,
     },
-    evaluatorCommentLabel: {
-        fontSize: 13,
-        fontWeight: '600',
+    messageContainer: {
+        padding: 20,
+        alignItems: 'center',
+    },
+    messageText: {
+        fontSize: 16,
         color: '#666',
-        marginBottom: 6,
+        textAlign: 'center',
+        lineHeight: 24,
     },
-    evaluatorCommentText: {
-        fontSize: 14,
+    scoreComment: {
+        fontSize: 15,
         color: '#333',
-        lineHeight: 20,
-    },
+        flex: 2,
+        textAlign: 'right',
+    }
 });

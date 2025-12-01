@@ -6,8 +6,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import styles from '../components/ResumeApp/ResumeApp.styles';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+import { resumeApi } from '../services/api';
 
 // --- 인터페이스 정의 ---
 interface ResumeData {
@@ -54,10 +53,17 @@ export default function ResumeScreen(): React.JSX.Element {
   useEffect(() => {
     const loadResumeDraft = async () => {
       try {
+        // 로그인한 사용자의 이메일 가져오기
+        const userEmail = await AsyncStorage.getItem('userEmail');
+        if (userEmail) {
+          setResumeData(prevData => ({ ...prevData, email: userEmail }));
+        }
+
         const savedDraft = await AsyncStorage.getItem('resumeDraft');
         if (savedDraft !== null) {
           const loadedData = JSON.parse(savedDraft);
-          setResumeData(prevData => ({ ...prevData, ...loadedData }));
+          // 이메일은 로그인한 사용자의 이메일로 고정
+          setResumeData(prevData => ({ ...prevData, ...loadedData, email: userEmail || prevData.email }));
         }
       } catch (error) { console.error('Failed to load resume draft', error); }
     };
@@ -111,26 +117,25 @@ export default function ResumeScreen(): React.JSX.Element {
         },
       };
 
-      const response = await fetch(`${API_URL}/api/v1/resumes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody), // 수정된 객체로 전송
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`서버 응답 오류: ${response.status} ${errorText}`);
-      }
-
-      const savedData = await response.json();
+      const savedData = await resumeApi.create(requestBody);
       console.log('서버 저장 성공:', savedData);
 
       // 최종 저장 성공 후, 로컬 초안 데이터를 삭제하여 다음 작성 시 빈 양식으로 시작하도록 합니다.
       await AsyncStorage.removeItem('resumeDraft');
       setShowPreviewModal(false);
+      
+      // 이력서 이메일을 AsyncStorage에 저장 (면접 시작 시 사용)
+      if (savedData.email) {
+        await AsyncStorage.setItem('resumeEmail', savedData.email);
+      }
+      
+      // 채용공고 선택 화면으로 이동
       router.replace({
-        pathname: '/chat',
-        params: { name: resumeData.name },
+        pathname: '/select-job',
+        params: { 
+          name: resumeData.name, 
+          email: savedData.email || resumeData.email || '',
+        },
       } as any);
 
     } catch (error) {
@@ -147,6 +152,10 @@ export default function ResumeScreen(): React.JSX.Element {
   };
 
   const handleInputChange = (field: keyof ResumeData, value: string): void => {
+    // 이메일 필드는 수정 불가
+    if (field === 'email') {
+      return;
+    }
     const newData = { ...resumeData, [field]: value };
     setResumeData(newData);
     if (touchedFields.has(field)) { const error = validateField(field, value); setValidationErrors(prev => ({ ...prev, [field]: error })); }
@@ -183,17 +192,24 @@ export default function ResumeScreen(): React.JSX.Element {
     if (currentStep > 0) { setCurrentStep(currentStep - 1); scrollViewRef.current?.scrollTo({ y: 0, animated: true }); }
   };
 
-  const renderInput = (field: keyof ResumeData, label: string, placeholder: string, required = false, keyboardType: KeyboardTypeOptions = 'default', multiline = false) => {
+  const renderInput = (field: keyof ResumeData, label: string, placeholder: string, required = false, keyboardType: KeyboardTypeOptions = 'default', multiline = false, disabled = false) => {
     const hasError = validationErrors[field] && touchedFields.has(field);
     return (
       <View style={styles.inputContainer}>
         <Text style={styles.label}>{label} {required && <Text style={styles.required}>*</Text>}</Text>
         <TextInput
-          style={[styles.input, multiline && styles.textArea, hasError && styles.inputError]}
-          value={resumeData[field]} onChangeText={(value) => handleInputChange(field, value)}
-          onBlur={() => handleFieldBlur(field)} placeholder={placeholder} placeholderTextColor="#999"
-          keyboardType={keyboardType} multiline={multiline} numberOfLines={multiline ? 6 : 1} />
+          style={[styles.input, multiline && styles.textArea, hasError && styles.inputError, disabled && styles.inputDisabled]}
+          value={resumeData[field]} 
+          onChangeText={disabled ? undefined : (value) => handleInputChange(field, value)}
+          onBlur={() => handleFieldBlur(field)} 
+          placeholder={placeholder} 
+          placeholderTextColor="#999"
+          keyboardType={keyboardType} 
+          multiline={multiline} 
+          numberOfLines={multiline ? 6 : 1}
+          editable={!disabled} />
         {hasError && <View style={styles.errorContainer}><Text style={styles.errorIcon}>⚠️</Text><Text style={styles.errorText}>{validationErrors[field]}</Text></View>}
+        {disabled && <Text style={styles.disabledHint}>로그인한 계정의 이메일입니다</Text>}
       </View>
     );
   };
@@ -258,7 +274,7 @@ export default function ResumeScreen(): React.JSX.Element {
           
           <View style={{ height: 20 }} />
 
-          {renderInput('email', '이메일', 'example@email.com', true, 'email-address')}
+          {renderInput('email', '이메일', 'example@email.com', true, 'email-address', false, true)}
           {renderInput('phone', '휴대전화', '010-1234-5678', true, 'phone-pad')}
           {renderInput('homePhone', '일반전화', '(선택) 02-1234-5678', false, 'phone-pad')}
         </>
