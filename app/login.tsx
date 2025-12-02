@@ -42,11 +42,12 @@ export default function LoginScreen() {
             Alert.alert('성공', '로그인되었습니다.', [
                 {
                     text: 'OK',
-                    onPress: () => router.replace({ pathname: '/' } as any),
+                    onPress: () => router.replace({ pathname: '/' }),
                 },
             ]);
-        } catch (error: any) {
-            Alert.alert('로그인 실패', error.message || '로그인 중 오류가 발생했습니다.');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : '로그인 중 오류가 발생했습니다.';
+            Alert.alert('로그인 실패', errorMessage);
         } finally {
             setLoading(false);
         }
@@ -107,7 +108,7 @@ export default function LoginScreen() {
 
                         <TouchableOpacity
                             style={styles.signupLink}
-                            onPress={() => router.push({ pathname: '/signup' } as any)}
+                            onPress={() => router.push({ pathname: '/signup' })}
                         >
                             <Text style={styles.signupLinkText}>
                                 계정이 없으신가요? <Text style={styles.signupLinkBold}>회원가입</Text>

@@ -49,11 +49,12 @@ export default function SignUpScreen() {
             Alert.alert('성공', '회원가입이 완료되었습니다.', [
                 {
                     text: 'OK',
-                    onPress: () => router.replace({ pathname: '/' } as any),
+                    onPress: () => router.replace({ pathname: '/' }),
                 },
             ]);
-        } catch (error: any) {
-            Alert.alert('회원가입 실패', error.message || '회원가입 중 오류가 발생했습니다.');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : '회원가입 중 오류가 발생했습니다.';
+            Alert.alert('회원가입 실패', errorMessage);
         } finally {
             setLoading(false);
         }

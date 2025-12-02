@@ -1,4 +1,5 @@
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -10,8 +11,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { jobPostingApi, JobPosting, resumeApi } from '../services/api';
+import { JobPosting, jobPostingApi, resumeApi } from '../services/api';
+import { handleApiError, handleNetworkError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 export default function JobDetailScreen() {
     const router = useRouter();
@@ -40,8 +42,10 @@ export default function JobDetailScreen() {
             setLoading(true);
             const data = await jobPostingApi.getById(parseInt(jobId!));
             setJobPosting(data);
-        } catch (error: any) {
-            console.error('채용공고 조회 실패:', error);
+        } catch (error) {
+            logger.error('채용공고 조회 실패:', error);
+            handleNetworkError(error);
+            router.back();
         } finally {
             setLoading(false);
         }
@@ -51,6 +55,23 @@ export default function JobDetailScreen() {
         if (!jobId) return;
 
         try {
+            // 로그인 체크
+            const token = await AsyncStorage.getItem('authToken');
+            if (!token) {
+                Alert.alert(
+                    '로그인 필요',
+                    '면접을 시작하려면 먼저 로그인해주세요.',
+                    [
+                        { text: '취소', style: 'cancel' },
+                        {
+                            text: '로그인하기',
+                            onPress: () => router.push({ pathname: '/login' }),
+                        },
+                    ]
+                );
+                return;
+            }
+
             // 이메일 가져오기 (로그인 이메일 우선 사용)
             let applicantEmail = await AsyncStorage.getItem('userEmail');
             if (!applicantEmail) {
@@ -65,7 +86,7 @@ export default function JobDetailScreen() {
                         { text: '취소', style: 'cancel' },
                         {
                             text: '이력서 작성하기',
-                            onPress: () => router.push({ pathname: '/resume' } as any),
+                            onPress: () => router.push({ pathname: '/resume' }),
                         },
                     ]
                 );
@@ -83,7 +104,7 @@ export default function JobDetailScreen() {
                         { text: '취소', style: 'cancel' },
                         {
                             text: '이력서 작성하기',
-                            onPress: () => router.push({ pathname: '/resume' } as any),
+                            onPress: () => router.push({ pathname: '/resume' }),
                         },
                     ]
                 );
@@ -98,10 +119,10 @@ export default function JobDetailScreen() {
                     jobId: jobId,
                     email: applicantEmail,
                 },
-            } as any);
-        } catch (error: any) {
-            Alert.alert('오류', '면접 시작 중 오류가 발생했습니다.');
-            console.error('면접 시작 오류:', error);
+            });
+        } catch (error) {
+            logger.error('면접 시작 오류:', error);
+            handleApiError(error, '면접 시작');
         }
     };
 
@@ -183,20 +204,6 @@ export default function JobDetailScreen() {
                 )}
 
                 <View style={styles.buttonContainer}>
-                    {userRole === 'COMPANY' && (
-                        <TouchableOpacity
-                            style={styles.rankingButton}
-                            onPress={() => {
-                                router.push({
-                                    pathname: '/ranking',
-                                    params: { jobId: jobId },
-                                } as any);
-                            }}
-                        >
-                            <Text style={styles.rankingButtonText}>📊 지원자 랭킹 보기</Text>
-                        </TouchableOpacity>
-                    )}
-                    
                     {userRole === 'APPLICANT' && (
                         <TouchableOpacity
                             style={styles.interviewButton}

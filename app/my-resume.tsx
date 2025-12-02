@@ -1,4 +1,5 @@
-import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -9,26 +10,31 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { resumeApi, Resume } from '../services/api';
+import { Resume, resumeApi } from '../services/api';
 
 export default function MyResumeScreen() {
     const router = useRouter();
+    const { applicantEmail } = useLocalSearchParams<{ applicantEmail?: string }>();
     const [resume, setResume] = useState<Resume | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         loadResume();
-    }, []);
+    }, [applicantEmail]);
 
     const loadResume = async () => {
         try {
             setLoading(true);
             setError(null);
             
-            // 이메일 가져오기 (로그인 이메일 우선 사용)
-            let email = await AsyncStorage.getItem('userEmail');
+            // 파라미터로 전달된 이메일 우선 사용 (랭킹에서 클릭한 경우)
+            let email: string | null = applicantEmail || null;
+            
+            // 파라미터가 없으면 로그인 이메일 사용
+            if (!email) {
+                email = await AsyncStorage.getItem('userEmail');
+            }
             if (!email) {
                 email = await AsyncStorage.getItem('resumeEmail');
             }
@@ -41,7 +47,10 @@ export default function MyResumeScreen() {
             const data = await resumeApi.getByEmail(email);
             setResume(data);
         } catch (error: any) {
-            console.error('이력서 조회 실패:', error);
+            // 이력서가 없는 경우는 정상적인 상황이므로 에러 로그를 출력하지 않음
+            if (error.message && !error.message.includes('이력서 조회 실패')) {
+                // 네트워크 오류 등 실제 오류인 경우에만 로그 출력
+            }
             setError('이력서를 찾을 수 없습니다. 먼저 이력서를 작성해주세요.');
         } finally {
             setLoading(false);
@@ -106,7 +115,7 @@ export default function MyResumeScreen() {
                     <Text style={styles.errorText}>{error || '이력서를 찾을 수 없습니다.'}</Text>
                     <TouchableOpacity
                         style={styles.createButton}
-                        onPress={() => router.push({ pathname: '/resume' } as any)}
+                        onPress={() => router.push({ pathname: '/resume' })}
                     >
                         <Text style={styles.createButtonText}>이력서 작성하기</Text>
                     </TouchableOpacity>
@@ -124,7 +133,7 @@ export default function MyResumeScreen() {
                 <Text style={styles.headerTitle}>내 이력서</Text>
                 <TouchableOpacity
                     style={styles.editButton}
-                    onPress={() => router.push({ pathname: '/resume' } as any)}
+                    onPress={() => router.push({ pathname: '/resume', params: { edit: 'true' } })}
                 >
                     <Text style={styles.editButtonText}>수정</Text>
                 </TouchableOpacity>
@@ -140,7 +149,7 @@ export default function MyResumeScreen() {
                     </View>
                     <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>이메일:</Text>
-                        <Text style={styles.infoValue}>{resume.email}</Text>
+                        <Text style={styles.infoValue}>{resume?.email || ''}</Text>
                     </View>
                     <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>전화번호:</Text>

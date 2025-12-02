@@ -11,6 +11,8 @@ import {
     View,
 } from 'react-native';
 import { jobPostingApi, JobPosting } from '../services/api';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 export default function SelectJobScreen() {
     const router = useRouter();
@@ -29,7 +31,8 @@ export default function SelectJobScreen() {
             const data = await jobPostingApi.getAll();
             setJobPostings(data);
         } catch (error: any) {
-            console.error('채용공고 목록 조회 실패:', error);
+            logger.error('채용공고 목록 조회 실패:', error);
+            handleApiError(error, '채용공고 목록 조회');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -50,7 +53,7 @@ export default function SelectJobScreen() {
                 jobId: jobId.toString(),
                 email: email || '',
             },
-        } as any);
+        });
     };
 
     if (loading) {
@@ -94,7 +97,7 @@ export default function SelectJobScreen() {
                         </Text>
                         <TouchableOpacity
                             style={styles.createButton}
-                            onPress={() => router.push({ pathname: '/job-posting' } as any)}
+                            onPress={() => router.push({ pathname: '/job-posting' })}
                         >
                             <Text style={styles.createButtonText}>채용공고 작성하기</Text>
                         </TouchableOpacity>

@@ -1,12 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
-import {
-  View, Text, ScrollView, TextInput, TouchableOpacity,
-  SafeAreaView, KeyboardAvoidingView, Platform, Modal, KeyboardTypeOptions,
-} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  KeyboardAvoidingView,
+  KeyboardTypeOptions,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TextInput, TouchableOpacity,
+  View,
+} from 'react-native';
 import styles from '../components/ResumeApp/ResumeApp.styles';
 import { resumeApi } from '../services/api';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 // --- 인터페이스 정의 ---
 interface ResumeData {
@@ -36,6 +45,7 @@ interface Option { value: string; label: string; }
 
 export default function ResumeScreen(): React.JSX.Element {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [showPreviewModal, setShowPreviewModal] = useState<boolean>(false);
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
@@ -51,7 +61,7 @@ export default function ResumeScreen(): React.JSX.Element {
   });
 
   useEffect(() => {
-    const loadResumeDraft = async () => {
+    const loadResumeData = async () => {
       try {
         // 로그인한 사용자의 이메일 가져오기
         const userEmail = await AsyncStorage.getItem('userEmail');
@@ -59,16 +69,55 @@ export default function ResumeScreen(): React.JSX.Element {
           setResumeData(prevData => ({ ...prevData, email: userEmail }));
         }
 
+        // 수정 모드인지 확인 (라우터 파라미터에서 확인)
+        const isEditMode = params?.edit === 'true' || params?.mode === 'edit';
+
+        if (isEditMode && userEmail) {
+          // 수정 모드: 서버에서 기존 이력서 데이터 불러오기
+          try {
+            const existingResume = await resumeApi.getByEmail(userEmail);
+            // 서버 데이터를 폼 데이터 형식으로 변환
+            setResumeData({
+              name: existingResume.name || '',
+              address: existingResume.address || '',
+              gender: existingResume.gender || '',
+              birthYear: existingResume.birthYear || '',
+              phone: existingResume.phone || '',
+              email: existingResume.email || userEmail || '',
+              homePhone: existingResume.homePhone || '',
+              schoolName: existingResume.academicRecord?.schoolName || '',
+              period: existingResume.academicRecord?.period || '',
+              status: existingResume.academicRecord?.status || '',
+              gpa: existingResume.academicRecord?.gpa?.toString() || '',
+              major: existingResume.academicRecord?.major || '',
+              desiredJob: existingResume.jobPreference?.desiredJob || '',
+              experienceLevel: existingResume.jobPreference?.experienceLevel || '',
+              description: existingResume.jobPreference?.description || '',
+              desiredRegion: existingResume.desiredRegion || '',
+              desiredSalary: existingResume.desiredSalary?.toString() || '',
+              employmentType: existingResume.workCondition?.employmentType || '',
+              desiredHours: existingResume.workCondition?.desiredHours || '',
+            });
+            return; // 서버 데이터를 불러왔으면 초안 데이터는 무시
+          } catch (error) {
+            // 서버에서 데이터를 불러오지 못한 경우 초안 데이터 사용
+            logger.log('기존 이력서를 불러오지 못했습니다. 초안 데이터를 사용합니다.');
+          }
+        }
+
+        // 초안 데이터 불러오기 (새로 작성하는 경우 또는 수정 모드에서 서버 데이터를 불러오지 못한 경우)
         const savedDraft = await AsyncStorage.getItem('resumeDraft');
         if (savedDraft !== null) {
           const loadedData = JSON.parse(savedDraft);
           // 이메일은 로그인한 사용자의 이메일로 고정
           setResumeData(prevData => ({ ...prevData, ...loadedData, email: userEmail || prevData.email }));
         }
-      } catch (error) { console.error('Failed to load resume draft', error); }
+      } catch (error) { 
+        logger.error('Failed to load resume data', error); 
+      }
     };
-    loadResumeDraft();
-  }, []);
+    loadResumeData();
+  }, [params]);
 
   const steps: Step[] = [
     { id: 'personal', label: '개인정보', icon: '👤', requiredFields: ['name', 'email', 'address', 'gender', 'birthYear', 'phone'] },
@@ -118,7 +167,7 @@ export default function ResumeScreen(): React.JSX.Element {
       };
 
       const savedData = await resumeApi.create(requestBody);
-      console.log('서버 저장 성공:', savedData);
+      logger.log('서버 저장 성공:', savedData);
 
       // 최종 저장 성공 후, 로컬 초안 데이터를 삭제하여 다음 작성 시 빈 양식으로 시작하도록 합니다.
       await AsyncStorage.removeItem('resumeDraft');
@@ -136,15 +185,24 @@ export default function ResumeScreen(): React.JSX.Element {
           name: resumeData.name, 
           email: savedData.email || resumeData.email || '',
         },
-      } as any);
+      });
 
     } catch (error) {
-      console.error('이력서 최종 저장 실패:', error);
+      logger.error('이력서 최종 저장 실패:', error);
+      handleApiError(error, '이력서 저장');
     }
   };
 
   const validateField = (field: string, value: string): string => {
-    if (!value.trim() && steps[currentStep].requiredFields.includes(field)) { return '필수 입력 항목입니다'; }
+    // 현재 단계의 필수 필드인지 확인
+    const isRequiredInCurrentStep = steps[currentStep].requiredFields.includes(field);
+    // 모든 단계의 필수 필드인지 확인
+    const isRequiredInAnyStep = steps.some(step => step.requiredFields.includes(field));
+    
+    // 현재 단계의 필수 필드이거나, 모든 단계에서 필수인 필드인 경우에만 검증
+    if (!value.trim() && isRequiredInCurrentStep) { 
+      return '필수 입력 항목입니다'; 
+    }
     if (field === 'email' && value) { const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; if (!emailRegex.test(value)) return '올바른 이메일 형식이 아닙니다'; }
     if (field === 'phone' && value) { const phoneRegex = /^010\d{8}$/; if (!phoneRegex.test(value.replace(/-/g, ''))) return '올바른 휴대폰 번호 형식이 아닙니다'; }
     if (field === 'birthYear' && value) { const year = parseInt(value); const currentYear = new Date().getFullYear(); if (isNaN(year) || year < 1900 || year > currentYear) return '올바른 출생년도를 입력하세요'; }
@@ -343,7 +401,7 @@ export default function ResumeScreen(): React.JSX.Element {
                 {Object.entries(resumeData).map(([key, value]) => {
                   if (value) {
                     return (
-                      <View key={key} style={styles.previewRow}>
+                      <View key={`preview-${key}`} style={styles.previewRow}>
                         <Text style={styles.previewLabel}>{dataLabels[key as keyof ResumeData]}</Text>
                         <Text style={styles.previewValue}>{value}</Text>
                       </View>

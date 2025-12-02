@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -11,8 +12,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { jobPostingApi, JobPosting, resumeApi } from '../services/api';
+import { JobPosting, jobPostingApi, resumeApi } from '../services/api';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 export default function JobListScreen() {
     const router = useRouter();
@@ -40,7 +42,8 @@ export default function JobListScreen() {
             const data = await jobPostingApi.getAll();
             setJobPostings(data);
         } catch (error: any) {
-            console.error('채용공고 목록 조회 실패:', error);
+            logger.error('채용공고 목록 조회 실패:', error);
+            handleApiError(error, '채용공고 목록 조회');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -54,6 +57,23 @@ export default function JobListScreen() {
 
     const handleStartInterview = async (jobId: number) => {
         try {
+            // 로그인 체크
+            const token = await AsyncStorage.getItem('authToken');
+            if (!token) {
+                Alert.alert(
+                    '로그인 필요',
+                    '면접을 시작하려면 먼저 로그인해주세요.',
+                    [
+                        { text: '취소', style: 'cancel' },
+                        {
+                            text: '로그인하기',
+                            onPress: () => router.push({ pathname: '/login' }),
+                        },
+                    ]
+                );
+                return;
+            }
+
             // 이메일 가져오기 (로그인 이메일 우선 사용)
             let applicantEmail = await AsyncStorage.getItem('userEmail');
             if (!applicantEmail) {
@@ -68,7 +88,7 @@ export default function JobListScreen() {
                         { text: '취소', style: 'cancel' },
                         {
                             text: '이력서 작성하기',
-                            onPress: () => router.push({ pathname: '/resume' } as any),
+                            onPress: () => router.push({ pathname: '/resume' }),
                         },
                     ]
                 );
@@ -86,7 +106,7 @@ export default function JobListScreen() {
                         { text: '취소', style: 'cancel' },
                         {
                             text: '이력서 작성하기',
-                            onPress: () => router.push({ pathname: '/resume' } as any),
+                            onPress: () => router.push({ pathname: '/resume' }),
                         },
                     ]
                 );
@@ -101,10 +121,10 @@ export default function JobListScreen() {
                     jobId: jobId.toString(),
                     email: applicantEmail,
                 },
-            } as any);
-        } catch (error: any) {
-            Alert.alert('오류', '면접 시작 중 오류가 발생했습니다.');
-            console.error('면접 시작 오류:', error);
+            });
+        } catch (error) {
+            logger.error('면접 시작 오류:', error);
+            handleApiError(error, '면접 시작');
         }
     };
 
@@ -148,7 +168,7 @@ export default function JobListScreen() {
                                     router.push({
                                         pathname: '/job-detail',
                                         params: { jobId: job.id.toString() },
-                                    } as any);
+                                    });
                                 }}
                             >
                                 <Text style={styles.jobTitle}>{job.jobTitle}</Text>
@@ -175,7 +195,7 @@ export default function JobListScreen() {
                                         router.push({
                                             pathname: '/ranking',
                                             params: { jobId: job.id.toString() },
-                                        } as any);
+                                        });
                                     }}
                                 >
                                     <Text style={styles.rankingButtonText}>📊 지원자 랭킹 보기</Text>

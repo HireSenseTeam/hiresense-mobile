@@ -63,6 +63,10 @@ export default function RootLayout() {
                 options={{ headerShown: false }}
             />
             <Stack.Screen
+                name="my-job-postings"
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
                 name="my-resume"
                 options={{ headerShown: false }}
             />

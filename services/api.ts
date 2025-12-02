@@ -66,7 +66,9 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise
       signal: controller.signal,
     });
     
-    // 401 에러 발생 시 토큰 갱신 시도
+    // 401 에러 발생 시 토큰 갱신 시도 (토큰이 있는 경우에만)
+    // 토큰이 없는 경우(로그아웃 상태)에는 401 에러를 그대로 반환하여
+    // 공개 API(채용공고 목록 등)는 토큰 없이도 접근 가능하도록 함
     if (response.status === 401 && token) {
       const refreshed = await tryRefreshToken();
       if (refreshed) {
@@ -93,6 +95,9 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise
         }
       }
     }
+    
+    // 토큰이 없는 상태에서 401 에러가 발생한 경우, 공개 API는 그대로 반환
+    // (백엔드에서 공개 API는 401을 반환하지 않아야 하지만, 안전을 위해 처리)
     
     clearTimeout(timeoutId);
     return response;
@@ -214,6 +219,13 @@ export const jobPostingApi = {
     return response.json();
   },
 
+  // 내 채용공고 목록 조회
+  getMyJobPostings: async (): Promise<JobPosting[]> => {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/job-postings/my`);
+    if (!response.ok) throw new Error('내 채용공고 목록 조회 실패');
+    return response.json();
+  },
+
   // 채용공고 상세 조회
   getById: async (id: number): Promise<JobPosting> => {
     const response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/job-postings/${id}`);
@@ -240,6 +252,44 @@ export const jobPostingApi = {
       throw new Error(errorMessage);
     }
     return response.json();
+  },
+
+  // 채용공고 수정
+  update: async (id: number, data: Partial<JobPosting>): Promise<void> => {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/job-postings/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = '채용공고 수정 실패';
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+  },
+
+  // 채용공고 삭제
+  delete: async (id: number): Promise<void> => {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/job-postings/${id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = '채용공고 삭제 실패';
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
   },
 };
 

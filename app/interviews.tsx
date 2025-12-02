@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -12,7 +13,8 @@ import {
     View,
 } from 'react-native';
 import { interviewApi, InterviewSession, jobPostingApi } from '../services/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 export default function InterviewsScreen() {
     const router = useRouter();
@@ -28,10 +30,14 @@ export default function InterviewsScreen() {
     const loadSessions = async () => {
         try {
             setLoading(true);
-            // 이메일 가져오기
-            const email = await AsyncStorage.getItem('userEmail');
+            // 이메일 가져오기 (로그인 이메일 우선 사용)
+            let email = await AsyncStorage.getItem('userEmail');
             if (!email) {
-                console.error('이메일을 찾을 수 없습니다.');
+                email = await AsyncStorage.getItem('resumeEmail');
+            }
+            if (!email) {
+                logger.error('이메일을 찾을 수 없습니다.');
+                setSessions([]);
                 return;
             }
             const data = await interviewApi.getSessionsByApplicant(email);
@@ -52,7 +58,8 @@ export default function InterviewsScreen() {
             });
             setJobPostingsMap(map);
         } catch (error: any) {
-            console.error('면접 목록 조회 실패:', error);
+            logger.error('면접 목록 조회 실패:', error);
+            handleApiError(error, '면접 목록 조회');
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -150,7 +157,7 @@ export default function InterviewsScreen() {
                         const jobPosting = jobPostingsMap.get(session.jobPostingId);
                         
                         if (!sessionId) {
-                            console.error('sessionId가 없습니다:', session);
+                            logger.error('sessionId가 없습니다:', session);
                             return null;
                         }
                         
@@ -162,7 +169,7 @@ export default function InterviewsScreen() {
                                         router.push({
                                             pathname: '/interview-detail',
                                             params: { sessionId: sessionId },
-                                        } as any);
+                                        });
                                     }}
                                 >
                                     <View style={styles.sessionHeader}>
