@@ -1,7 +1,9 @@
 // app/job-posting.tsx
-import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
+    Alert,
     KeyboardAvoidingView, Platform,
     SafeAreaView,
     ScrollView,
@@ -9,9 +11,10 @@ import {
     TextInput, TouchableOpacity,
     View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles from '../components/ResumeApp/ResumeApp.styles';
 import { jobPostingApi } from '../services/api';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 // 채용공고 데이터 인터페이스
 interface JobPostingData {
     companyName: string;
@@ -37,10 +40,14 @@ interface Step {
 
 export default function JobPostingScreen(): React.JSX.Element {
     const router = useRouter();
+    const params = useLocalSearchParams<{ jobId?: string; edit?: string }>();
     const scrollViewRef = useRef<ScrollView>(null);
     const [currentStep, setCurrentStep] = useState<number>(0);
     const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
     const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [jobPostingId, setJobPostingId] = useState<number | null>(null);
+    const [loading, setLoading] = useState(false);
 
     const [jobPostingData, setJobPostingData] = useState<JobPostingData>({
         companyName: '',
@@ -54,19 +61,48 @@ export default function JobPostingScreen(): React.JSX.Element {
     });
 
     useEffect(() => {
-        const loadJobPostingDraft = async () => {
+        const loadData = async () => {
             try {
-                const savedDraft = await AsyncStorage.getItem('jobPostingDraft');
-                if (savedDraft !== null) {
-                    const loadedData = JSON.parse(savedDraft);
-                    setJobPostingData(prevData => ({ ...prevData, ...loadedData }));
+                // 수정 모드 확인
+                const editMode = params?.edit === 'true' || params?.edit === 'edit';
+                const id = params?.jobId;
+                
+                if (editMode && id) {
+                    setIsEditMode(true);
+                    setJobPostingId(parseInt(id));
+                    setLoading(true);
+                    try {
+                        const existingJob = await jobPostingApi.getById(parseInt(id));
+                        setJobPostingData({
+                            companyName: existingJob.companyName || '',
+                            jobTitle: existingJob.jobTitle || '',
+                            workLocation: existingJob.workLocation || '',
+                            recruitmentPeriod: existingJob.recruitmentPeriod || '',
+                            qualifications: existingJob.qualifications || '',
+                            idealCandidate: existingJob.idealCandidate || '',
+                            preferredQualifications: existingJob.preferredQualifications || '',
+                            jobDescription: existingJob.jobDescription || '',
+                        });
+                    } catch (error) {
+                        logger.error('채용공고 로드 실패:', error);
+                        handleApiError(error, '채용공고 불러오기');
+                    } finally {
+                        setLoading(false);
+                    }
+                } else {
+                    // 초안 로드
+                    const savedDraft = await AsyncStorage.getItem('jobPostingDraft');
+                    if (savedDraft !== null) {
+                        const loadedData = JSON.parse(savedDraft);
+                        setJobPostingData(prevData => ({ ...prevData, ...loadedData }));
+                    }
                 }
             } catch (error) {
-                console.error('Failed to load job posting draft', error);
+                logger.error('데이터 로드 실패:', error);
             }
         };
-        loadJobPostingDraft();
-    }, []);
+        loadData();
+    }, [params]);
 
     // 단계별 설정
     const steps: Step[] = [
@@ -92,7 +128,11 @@ export default function JobPostingScreen(): React.JSX.Element {
 
     // 유효성 검사
     const validateField = (field: string, value: string): string => {
-        if (!value.trim() && steps[currentStep].requiredFields.includes(field)) {
+        // 현재 단계의 필수 필드인지 확인
+        const isRequiredInCurrentStep = steps[currentStep].requiredFields.includes(field);
+        
+        // 현재 단계의 필수 필드인 경우에만 검증
+        if (!value.trim() && isRequiredInCurrentStep) {
             return '필수 입력 항목입니다';
         }
         return '';
@@ -177,14 +217,21 @@ export default function JobPostingScreen(): React.JSX.Element {
 
         if (Object.keys(errors).length === 0) {
             try {
-                const savedJobPosting = await jobPostingApi.create(jobPostingData);
-                console.log('채용공고 저장 성공:', savedJobPosting);
-                await AsyncStorage.removeItem('jobPostingDraft');
-                router.back();
-            } catch (error: any) {
-                console.error('채용공고 저장 오류:', error);
-                // 사용자에게 오류를 알리는 UI 로직을 추가할 수 있습니다.
-                alert(`채용공고 저장 실패: ${error.message || '네트워크 오류가 발생했습니다.'}`);
+                if (isEditMode && jobPostingId) {
+                    await jobPostingApi.update(jobPostingId, jobPostingData);
+                    Alert.alert('성공', '채용공고가 수정되었습니다.', [
+                        { text: '확인', onPress: () => router.back() },
+                    ]);
+                } else {
+                    await jobPostingApi.create(jobPostingData);
+                    await AsyncStorage.removeItem('jobPostingDraft');
+                    Alert.alert('성공', '채용공고가 등록되었습니다.', [
+                        { text: '확인', onPress: () => router.back() },
+                    ]);
+                }
+            } catch (error) {
+                logger.error('채용공고 저장 오류:', error);
+                handleApiError(error, isEditMode ? '채용공고 수정' : '채용공고 저장');
             }
         }
     };
