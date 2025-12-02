@@ -1,4 +1,4 @@
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -9,7 +9,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { interviewApi, InterviewSession, InterviewScore } from '../services/api';
+import { interviewApi, InterviewScore, InterviewSession } from '../services/api';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 interface InterviewAnswer {
     id: number;
@@ -49,11 +51,12 @@ export default function InterviewDetailScreen() {
                     const scoreData = await interviewApi.getScore(sessionId!);
                     setScore(scoreData);
                 } catch (error) {
-                    console.log('점수 조회 실패 (아직 채점 중일 수 있음)');
+                    logger.log('점수 조회 실패 (아직 채점 중일 수 있음)');
                 }
             }
         } catch (error: any) {
-            console.error('면접 데이터 로드 실패:', error);
+            logger.error('면접 데이터 로드 실패:', error);
+            handleApiError(error, '면접 데이터 로드');
         } finally {
             setLoading(false);
         }
@@ -149,8 +152,8 @@ export default function InterviewDetailScreen() {
                             <Text style={styles.scoreTitle}>종합 점수</Text>
                             <Text style={styles.scoreValue}>
                                 {typeof score.overallScore === 'number' 
-                                    ? score.overallScore.toFixed(2) 
-                                    : parseFloat(String(score.overallScore || 0)).toFixed(2)} / 100
+                                    ? Math.round(score.overallScore) 
+                                    : Math.round(parseFloat(String(score.overallScore || 0)))} / 100
                             </Text>
                         </View>
                         <View style={styles.scoreItem}>
@@ -183,7 +186,7 @@ export default function InterviewDetailScreen() {
                         <Text style={styles.emptyText}>답변이 없습니다.</Text>
                     ) : (
                         answers.map((answer, index) => (
-                            <View key={answer.id} style={styles.answerCard}>
+                            <View key={answer.id || `answer-${index}-${answer.questionText?.substring(0, 10)}`} style={styles.answerCard}>
                                 <View style={styles.questionHeader}>
                                     <Text style={styles.questionNumber}>Q{index + 1}</Text>
                                     {answer.score !== undefined && (

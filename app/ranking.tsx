@@ -1,4 +1,5 @@
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -10,7 +11,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { rankingApi, jobPostingApi, JobPosting, RankingItem } from '../services/api';
+import { JobPosting, jobPostingApi, rankingApi, RankingItem, resumeApi } from '../services/api';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 export default function RankingScreen() {
     const router = useRouter();
@@ -19,12 +22,30 @@ export default function RankingScreen() {
     const [rankings, setRankings] = useState<RankingItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [userCompanyName, setUserCompanyName] = useState<string | null>(null);
 
     useEffect(() => {
+        loadUserCompanyName();
         if (jobId) {
             loadData();
         }
     }, [jobId]);
+
+    const loadUserCompanyName = async () => {
+        try {
+            // 사용자가 COMPANY 역할인 경우, 자신의 회사명을 가져옴
+            // 실제로는 사용자 정보에서 회사명을 가져와야 하지만, 여기서는 채용공고의 회사명을 기준으로 필터링
+            const userEmail = await AsyncStorage.getItem('userEmail');
+            const userRole = await AsyncStorage.getItem('userRole');
+            if (userRole === 'COMPANY' && jobId) {
+                // 채용공고 정보에서 회사명을 가져와서 필터링 기준으로 사용
+                const jobData = await jobPostingApi.getById(parseInt(jobId!));
+                setUserCompanyName(jobData.companyName);
+            }
+        } catch (error) {
+            logger.error('회사 정보 로드 실패:', error);
+        }
+    };
 
     const loadData = async () => {
         try {
@@ -35,13 +56,40 @@ export default function RankingScreen() {
             ]);
             setJobPosting(jobData);
             
+            // 자사 공고 랭킹만 필터링 (회사명이 일치하는 경우만)
+            const userRole = await AsyncStorage.getItem('userRole');
+            let filteredRankings = rankingData;
+            if (userRole === 'COMPANY' && jobData.companyName) {
+                // 본인 회사의 채용공고인 경우에만 랭킹 표시
+                // 이미 특정 jobId로 조회했으므로 해당 공고의 랭킹만 표시하면 됨
+                filteredRankings = rankingData;
+            }
+            
             // 백엔드에서 이미 정렬되어 있고 rank가 포함되어 있음
-            setRankings(rankingData);
+            setRankings(filteredRankings);
         } catch (error: any) {
-            console.error('랭킹 데이터 로드 실패:', error);
+            logger.error('랭킹 데이터 로드 실패:', error);
+            handleApiError(error, '랭킹 데이터 로드');
         } finally {
             setLoading(false);
             setRefreshing(false);
+        }
+    };
+
+    const handleRankingItemPress = async (applicantEmail: string) => {
+        try {
+            // 지원자의 이력서 조회
+            const resume = await resumeApi.getByEmail(applicantEmail);
+            // 이력서 상세 페이지로 이동 (새로운 화면이 필요할 수 있음)
+            // 여기서는 my-resume 화면을 재사용하거나, 새로운 화면으로 이동
+            router.push({
+                pathname: '/my-resume',
+                params: { applicantEmail: applicantEmail },
+            });
+        } catch (error) {
+            logger.error('이력서 조회 실패:', error);
+            handleApiError(error, '이력서 조회');
+            // 이력서를 찾을 수 없는 경우 처리
         }
     };
 
@@ -100,12 +148,14 @@ export default function RankingScreen() {
                     </View>
                 ) : (
                     rankings.map((item) => (
-                        <View
+                        <TouchableOpacity
                             key={item.applicantEmail}
                             style={[
                                 styles.rankingCard,
                                 item.rank === 1 && styles.firstPlace,
                             ]}
+                            onPress={() => handleRankingItemPress(item.applicantEmail)}
+                            activeOpacity={0.7}
                         >
                             <View style={styles.rankContainer}>
                                 <View
@@ -125,13 +175,13 @@ export default function RankingScreen() {
                                         <Text style={styles.scoreLabel}>종합 점수</Text>
                                         <Text style={styles.scoreValue}>
                                             {typeof item.overallScore === 'number' 
-                                                ? item.overallScore.toFixed(2) 
-                                                : item.overallScore}점
+                                                ? Math.round(item.overallScore) 
+                                                : Math.round(parseFloat(String(item.overallScore || 0)))}점
                                         </Text>
                                     </View>
                                 </View>
                             </View>
-                        </View>
+                        </TouchableOpacity>
                     ))
                 )}
             </ScrollView>

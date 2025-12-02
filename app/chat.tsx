@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 
 import { interviewApi } from '../services/api';
+import { handleApiError } from '../utils/errorHandler';
+import { logger } from '../utils/logger';
 
 // ★ (새로 추가) 채점 결과를 표시할 컴포넌트
 interface ScoreReport {
@@ -34,7 +36,7 @@ const ScoreDisplay = ({ scoreReport }: { scoreReport: ScoreReport }) => {
             <View style={styles.scoreItem}>
                 <Text style={styles.scoreLabel}>종합 점수:</Text>
                 <Text style={[styles.scoreValue, styles.overallScore]}>
-                    {isNaN(overallScore) ? '0' : overallScore.toFixed(2)} / 100
+                    {isNaN(overallScore) ? '0' : Math.round(overallScore)} / 100
                 </Text>
             </View>
 
@@ -81,7 +83,7 @@ export default function ChatScreen() {
     const [scoreReport, setScoreReport] = useState<ScoreReport | null>(null); // 채점 결과 JSON
     const [isFetchingScore, setIsFetchingScore] = useState(false); // 점수 로딩 중
 
-    const scrollViewRef = useRef(null); // 스크롤뷰를 제어하기 위한 Ref
+    const scrollViewRef = useRef<ScrollView>(null); // 스크롤뷰를 제어하기 위한 Ref
 
     // --- 3. 면접 시작 (화면 로드 시 1회 실행) ---
     useEffect(() => {
@@ -111,7 +113,7 @@ export default function ChatScreen() {
                     return;
                 }
 
-                console.log('[면접 시작] 사용할 이메일:', applicantEmail);
+                logger.log('[면접 시작] 사용할 이메일:', applicantEmail);
                 const data = await interviewApi.start(parseInt(jobId), applicantEmail);
 
                 // 성공 시: 세션 ID 저장 및 첫 질문 표시
@@ -120,7 +122,8 @@ export default function ChatScreen() {
                 setInterviewActive(true); // 면접 시작
 
             } catch (error: any) {
-                console.error("Error starting interview:", error);
+                logger.error("Error starting interview:", error);
+                handleApiError(error, '면접 시작');
                 addMessageToHistory('ai', `면접 시작 중 오류 발생: ${error.message}`);
             }
             setIsLoading(false);
@@ -162,7 +165,8 @@ export default function ChatScreen() {
             }
 
         } catch (error: any) {
-            console.error("Error sending answer:", error);
+            logger.error("Error sending answer:", error);
+            handleApiError(error, '답변 전송');
             addMessageToHistory('ai', `오류 발생: ${error.message}`);
         }
         setIsLoading(false); // AI 질문 로딩은 종료
@@ -171,7 +175,7 @@ export default function ChatScreen() {
     // --- 5. ★ (새로 추가) 점수 폴링(Polling) 함수 ---
 
     // ms만큼 기다리는 함수
-    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     // 점수 결과를 주기적으로 확인하는 함수
     const pollForScore = async (currentSessionId: string) => {
@@ -190,11 +194,11 @@ export default function ChatScreen() {
             } catch (error: any) {
                 if (error.message === 'NOT_FOUND' || error.message === 'SCORING_IN_PROGRESS') {
                     // 아직 채점 중
-                    console.log("채점 진행 중... (Attempt", i + 1, ")");
+                    logger.log("채점 진행 중... (Attempt", i + 1, ")");
                     await sleep(POLL_INTERVAL);
                 } else {
                     // 그 외 오류
-                    console.error("Error polling score:", error);
+                    logger.error("Error polling score:", error);
                     addMessageToHistory('ai', `채점 결과 로딩 중 오류 발생: ${error.message}`);
                     setIsFetchingScore(false);
                     return; // 오류 발생 시 폴링 종료
@@ -217,7 +221,9 @@ export default function ChatScreen() {
 
     // 스크롤을 맨 아래로 내리는 함수
     const scrollToBottom = () => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
+        if (scrollViewRef.current) {
+            scrollViewRef.current.scrollToEnd({ animated: true });
+        }
     };
 
     return (
@@ -396,12 +402,6 @@ const styles = StyleSheet.create({
     messageContainer: {
         padding: 20,
         alignItems: 'center',
-    },
-    messageText: {
-        fontSize: 16,
-        color: '#666',
-        textAlign: 'center',
-        lineHeight: 24,
     },
     scoreComment: {
         fontSize: 15,
